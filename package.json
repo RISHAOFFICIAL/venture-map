@@ -1,0 +1,11 @@
+{
+  "name": "venturemap-organizations-proxy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node Server/organizations-proxy.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
