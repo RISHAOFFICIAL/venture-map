@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import SwiftData
 
 /// The main app screen after signing in (or entering as a guest): a
 /// full-screen map with a header, a reach-stats card, and every sheet the
@@ -10,12 +11,18 @@ import MapKit
 ///
 /// - **Custom `init`**: Most SwiftUI views get a free memberwise
 ///   initializer, but this one writes its own because `businesses`,
-///   `selectedBusinessID`, `events`, and `accountName` all need to start with
+///   `selectedBusinessID`, `guestEvents`, and `accountName` all need to start with
 ///   *different* values depending on `isGuest`. Inside a custom init, you
 ///   must set `@State` properties using the special `_propertyName =
 ///   State(initialValue: ...)` form (not `propertyName = ...`), because at
 ///   this point you're configuring the property wrapper itself, before the
 ///   view has "started."
+/// - **Saved events vs practice events**: a signed-in account reads its
+///   events from the SwiftData store (`@Query`), so adds and edits survive
+///   app relaunches. A guest never touches the store: practice events live
+///   only in the in-memory `guestEvents` array, and disappear when the app
+///   closes. The computed `events` property below is the single place that
+///   picks which list the rest of the screen sees.
 /// - **One `@State` per piece of mutable UI state**: every sheet
 ///   (`showsAddEvent`, `showsSearch`, `showsProfile`, ...) is just a `Bool`
 ///   that a `.sheet(isPresented:)` watches. Setting it to `true` is all it
@@ -35,7 +42,21 @@ struct VentureMapHomeView: View {
     let isGuest: Bool
     let onRequireSignIn: () -> Void
     let onRequireSignUp: () -> Void
-    @State private var events: [CommunityEvent]
+    // The SwiftData context, provided by `MyApp`. Writes (insert, save) go
+    // through here; reads come from `storedEvents` below.
+    @Environment(\.modelContext) private var modelContext
+    // Saved events for a signed-in account, newest first. `@Query` keeps
+    // this list live: inserts and edits in the store re-run `body` on their own.
+    @Query(sort: \CommunityEvent.date, order: .reverse) private var storedEvents: [CommunityEvent]
+    // Practice events for a guest, kept only in memory. Guests never write
+    // to the saved store.
+    @State private var guestEvents: [CommunityEvent]
+
+    /// The events this screen shows: saved events for a signed-in account,
+    /// in-memory practice events for a guest.
+    private var events: [CommunityEvent] {
+        isGuest ? guestEvents : storedEvents
+    }
     // The organization name the person signed in or signed up with.
     @AppStorage("accountOrganization") private var accountName = ""
     @State private var organizationFocus = "Technology-focused outreach"
@@ -63,10 +84,12 @@ struct VentureMapHomeView: View {
         self.onRequireSignUp = onRequireSignUp
         // Guests get a small, clearly-labeled practice dataset instead of the same
         // data a signed-in account would see, so practice mode never looks "real."
+        // A signed-in account reads its events from the SwiftData store
+        // instead (seeded with `sampleEvents` on first launch, see below).
         let businesses = isGuest ? Business.practiceBusinesses : Business.sampleBusinesses
         _businesses = State(initialValue: businesses)
         _selectedBusinessID = State(initialValue: businesses[0].id)
-        _events = State(initialValue: isGuest ? CommunityEvent.practiceEvents : CommunityEvent.sampleEvents)
+        _guestEvents = State(initialValue: CommunityEvent.practiceEvents)
     }
 
     var body: some View {
@@ -135,7 +158,12 @@ struct VentureMapHomeView: View {
                 allowsSaving: !isGuest,
                 onRequireSignIn: onRequireSignIn
             ) { event in
-                events.append(event)
+                if isGuest {
+                    guestEvents.append(event)
+                } else {
+                    modelContext.insert(event)
+                    try? modelContext.save()
+                }
                 cameraPosition = .region(
                     MKCoordinateRegion(
                         center: event.coordinate,
@@ -209,6 +237,23 @@ struct VentureMapHomeView: View {
                 showsTutorial = true
             }
         }
+        .task {
+            seedSampleEventsIfNeeded()
+        }
+    }
+
+    /// First launch for a signed-in account starts with the sample events,
+    /// so the map is never empty. This only ever inserts once: after
+    /// seeding, the store is no longer empty, so later launches skip it.
+    /// Guests never reach this — their practice events stay in memory only.
+    private func seedSampleEventsIfNeeded() {
+        guard !isGuest else { return }
+        let descriptor = FetchDescriptor<CommunityEvent>()
+        guard let existing = try? modelContext.fetch(descriptor), existing.isEmpty else { return }
+        for event in CommunityEvent.sampleEvents {
+            modelContext.insert(event)
+        }
+        try? modelContext.save()
     }
 
     /// Centers the map on the user's current location with an animation.
@@ -252,12 +297,19 @@ struct VentureMapHomeView: View {
         }
     }
 
-    // Finding-then-replacing by `id` (rather than mutating in place) is the
-    // standard way to "edit" one value inside an array of structs: since
-    // `CommunityEvent` is a value type, there's no shared reference to
-    // update — you must locate the matching element's index and overwrite it.
+    // The edit sheets hand back a detached copy (see `CommunityEvent`), so
+    // saving means finding the real event with the same `id` and copying the
+    // edited values onto it. For a guest, the "real" event lives in the
+    // in-memory practice array; for a signed-in account, it lives in the
+    // SwiftData store, and `save()` writes the change to disk.
     private func updateEvent(_ updatedEvent: CommunityEvent) {
-        guard let index = events.firstIndex(where: { $0.id == updatedEvent.id }) else { return }
-        events[index] = updatedEvent
+        if isGuest {
+            guard let index = guestEvents.firstIndex(where: { $0.id == updatedEvent.id }) else { return }
+            guestEvents[index] = updatedEvent
+            return
+        }
+        guard let stored = storedEvents.first(where: { $0.id == updatedEvent.id }) else { return }
+        stored.update(from: updatedEvent)
+        try? modelContext.save()
     }
 }

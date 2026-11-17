@@ -2,15 +2,15 @@ import SwiftUI
 
 /// A rough "how big was this event" bucket, used to color-code map markers.
 ///
-/// This enum has no raw value (compare with `EventType`, which is
-/// `String`-backed) — these cases don't need to be saved or displayed as
-/// text directly, they just drive logic inside this file.
+/// The `String` raw value plus `Codable` is what lets SwiftData store this
+/// enum on a `CommunityEvent` — the case name is saved as text and decoded
+/// back when the event is loaded.
 ///
 /// Notice `color` and `title` below: these are **computed properties**. They
 /// look like stored variables from the outside (`category.color`), but
 /// every time you read them, the `switch` runs again to calculate the
 /// answer. Nothing is actually stored — it's calculated on demand.
-enum EventCategory {
+enum EventCategory: String, Codable {
     case red
     case orange
     case yellow

@@ -13,7 +13,9 @@ struct EventEditorView: View {
     let onSave: (CommunityEvent) -> Void
 
     init(event: CommunityEvent, onSave: @escaping (CommunityEvent) -> Void) {
-        _event = State(initialValue: event)
+        // Edit a detached copy, not the saved event itself, so cancelling
+        // never changes the stored event. See `EventDetailView`.
+        _event = State(initialValue: event.detachedCopy())
         self.onSave = onSave
     }
 

@@ -4,12 +4,12 @@ import SwiftUI
 /// read-only mode, with a pencil button that flips it into editing mode and
 /// then saves/commits the change.
 ///
-/// `@State private var event: CommunityEvent`, initialized from the `event`
-/// passed into `init`, is a **local, editable copy**. Nothing written here
-/// changes the original list back in `VentureMapHomeView` until `onSave` is
-/// explicitly called — this is what lets someone open the edit form, make
-/// changes, and still cancel out (by dismissing) without those changes ever
-/// taking effect.
+/// `@State private var event: CommunityEvent`, initialized from
+/// `event.detachedCopy()`, is a **local, editable copy** that is not
+/// attached to the SwiftData store. Nothing written here changes the saved
+/// event back in `VentureMapHomeView` until `onSave` is explicitly called —
+/// this is what lets someone open the edit form, make changes, and still
+/// cancel out (by dismissing) without those changes ever taking effect.
 struct EventDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var event: CommunityEvent
@@ -17,7 +17,7 @@ struct EventDetailView: View {
     let onSave: (CommunityEvent) -> Void
 
     init(event: CommunityEvent, onSave: @escaping (CommunityEvent) -> Void) {
-        _event = State(initialValue: event)
+        _event = State(initialValue: event.detachedCopy())
         self.onSave = onSave
     }
 

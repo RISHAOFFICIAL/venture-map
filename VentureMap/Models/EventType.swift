@@ -10,7 +10,7 @@
 ///   loops elsewhere build a picker without us having to list the cases twice.
 /// - `Identifiable` (via the `id` computed property) lets SwiftUI tell cases
 ///   apart inside a `ForEach`.
-enum EventType: String, CaseIterable, Identifiable {
+enum EventType: String, CaseIterable, Identifiable, Codable {
     case communityEvent
     case workshop
     case listeningSession

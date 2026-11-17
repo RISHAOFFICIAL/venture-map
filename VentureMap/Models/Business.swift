@@ -13,22 +13,34 @@ import SwiftUI
 /// SwiftUI use this type directly in `ForEach` and `.sheet(item:)` without
 /// any extra boilerplate — SwiftUI uses `id` to know which row is which.
 struct Business: Identifiable {
-    let id = UUID()
+    let id: UUID
     var name: String
     var location: String
+
+    init(id: UUID = UUID(), name: String, location: String) {
+        self.id = id
+        self.name = name
+        self.location = location
+    }
 
     // `static` properties belong to the type itself, not to any one
     // instance — so you reach them with `Business.sampleBusinesses` rather
     // than `someBusiness.sampleBusinesses`. They're used here as ready-made
     // sample data for previews and for signed-in accounts.
+    //
+    // The sample businesses use fixed ids on purpose: saved events point at
+    // a business by id, so the ids must stay the same across launches or
+    // saved events would stop matching any business after a restart.
+    // Businesses created in the app (see ProfileView) still get a fresh
+    // random id from the `init` default above.
     static let sampleBusinesses = [
-        Business(name: "VentureMap Tech", location: "Detroit, MI"),
-        Business(name: "VentureMap Labs", location: "Dearborn, MI")
+        Business(id: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!, name: "VentureMap Tech", location: "Detroit, MI"),
+        Business(id: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!, name: "VentureMap Labs", location: "Dearborn, MI")
     ]
 
     // A single, clearly-labeled business for guests so practice mode never
     // looks like a real signed-in account's data.
     static let practiceBusinesses = [
-        Business(name: "Practice Business", location: "Sample City, MI")
+        Business(id: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!, name: "Practice Business", location: "Sample City, MI")
     ]
 }
