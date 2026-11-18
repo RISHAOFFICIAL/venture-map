@@ -26,6 +26,7 @@ struct HomeHeader: View {
                         .frame(width: 38, height: 38)
                         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
                 }
+                .tourAnchor(.profileButton)
                 .accessibilityLabel("Open profile")
 
                 Spacer()
@@ -45,6 +46,7 @@ struct HomeHeader: View {
                         Image(systemName: "plus")
                             .frame(width: 36, height: 38)
                     }
+                    .tourAnchor(.addButton)
                 }
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
                 .accessibilityLabel("Search or add event")

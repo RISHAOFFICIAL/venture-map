@@ -52,6 +52,14 @@ struct GuestProfilePrompt: View {
                         subtitle: "See how outreach stats work"
                     )
                 }
+                featureButton(.replayTour) {
+                    GuestFeatureRow(
+                        icon: "play.circle.fill",
+                        tint: .teal,
+                        title: "Replay the tour",
+                        subtitle: "Walk through the app again"
+                    )
+                }
                 featureButton(.saveProgress) {
                     GuestFeatureRow(
                         icon: "lock.fill",

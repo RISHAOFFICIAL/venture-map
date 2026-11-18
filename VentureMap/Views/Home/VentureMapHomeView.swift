@@ -73,7 +73,15 @@ struct VentureMapHomeView: View {
     @State private var initialLocation = ""
     @State private var detailEvent: CommunityEvent?
     @State private var fullListLocation: SelectedLocation?
-    @State private var showsTutorial = false
+    // The guided tour (see `VentureMapTour.swift`): spotlights the real
+    // home-screen elements instead of the old swipeable word pages.
+    @ObservedObject private var tour = VentureMapTourManager.shared
+    // Frames of the tour's anchor views, reported up through
+    // `TourFramePreferenceKey` in the "tour" coordinate space.
+    @State private var tourAnchors: [TourAnchor: CGRect] = [:]
+    // True while the callout on screen is one the tour opened itself, so
+    // finishing the tour can close it again.
+    @State private var tourOpenedCallout = false
     // Powers the "center on me" location button above the reach card.
     @State private var userLocationProvider
  = UserLocationProvider()
@@ -127,6 +135,7 @@ struct VentureMapHomeView: View {
                     ReachCard(events: filteredEvents)
                 }
                 .buttonStyle(.plain)
+                .tourAnchor(.reachCard)
                 .accessibilityLabel("Open your reach overview")
             }
             .padding(.horizontal, 10)
@@ -150,6 +159,17 @@ struct VentureMapHomeView: View {
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
+        }
+        .onPreferenceChange(TourFramePreferenceKey.self) { frames in
+            tourAnchors = frames
+        }
+        // The tour overlay sits above the map, header, and reach card, so
+        // its dim covers the real screen while the spotlight hole and tip
+        // card stay on top.
+        .overlay {
+            if tour.isShowing {
+                VentureMapTourOverlay(anchors: tourAnchors)
+            }
         }
         .sheet(isPresented: $showsAddEvent) {
             AddEventView(
@@ -229,17 +249,26 @@ struct VentureMapHomeView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .fullScreenCover(isPresented: $showsTutorial) {
-            GuestTutorialView(onFinish: { showsTutorial = false })
-        }
         .onAppear {
             if isGuest {
-                showsTutorial = true
+                tour.startAutomaticallyIfNeeded()
+            }
+        }
+        .onChange(of: tour.step) { _, _ in
+            prepareTourStep()
+        }
+        .onChange(of: tour.isShowing) { _, isShowing in
+            if !isShowing {
+                clearTourCallout()
             }
         }
         .task {
             seedSampleEventsIfNeeded()
         }
+        // The shared coordinate space the tour's anchors are measured in.
+        // It sits last so every part of this screen — the map, the header,
+        // the bottom card — is inside it and can resolve the name.
+        .coordinateSpace(name: "tour")
     }
 
     /// First launch for a signed-in account starts with the sample events,
@@ -286,7 +315,37 @@ struct VentureMapHomeView: View {
             showsReachOverview = true
         case .saveProgress:
             onRequireSignUp()
+        case .replayTour:
+            tour.startAgain()
         }
+    }
+
+    /// Sets the real screen up for the tour's current step. Only the pin
+    /// step needs setup: it opens the first event's callout so the tour can
+    /// spotlight a real callout, and moves the camera so the callout is on
+    /// screen. If the filters hide every event, there is nothing to open
+    /// and the step falls back to spotlighting the map.
+    private func prepareTourStep() {
+        guard tour.isShowing, tour.currentStep.anchor == .callout, !tourOpenedCallout else { return }
+        guard let first = filteredEvents.first else { return }
+        tourOpenedCallout = true
+        withAnimation {
+            selectedLocation = SelectedLocation(location: first.location)
+            cameraPosition = .region(
+                MKCoordinateRegion(
+                    center: first.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                )
+            )
+        }
+    }
+
+    /// Closes the callout the tour opened, if it opened one. Runs when the
+    /// tour finishes or is skipped, so the guest lands back on a clean map.
+    private func clearTourCallout() {
+        guard tourOpenedCallout else { return }
+        tourOpenedCallout = false
+        selectedLocation = nil
     }
 
     private var filteredEvents: [CommunityEvent] {

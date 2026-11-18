@@ -78,6 +78,7 @@ struct OutreachMap: View {
                         onShowAll: { onShowAllEvents(SelectedLocation(location: selectedCluster.location)) },
                         onDismiss: { selectedLocation = nil }
                     )
+                    .tourAnchor(.callout)
                     .position(x: point.x, y: point.y - 150)
                     .transition(.scale(scale: 0.9, anchor: .bottom).combined(with: .opacity))
                 }
