@@ -1,0 +1,39 @@
+# Builds VentureMap on GitHub's cloud Macs every time code is pushed to
+# main or a pull request opens against main. The build proves the app
+# compiles; it does not sign anything and it does not run on a device.
+#
+# Why this shape:
+# - `macos-latest` always has the newest Xcode, which is what the app
+#   needs (it targets iOS 27).
+# - `-target VentureMap` builds the app target directly, so no shared
+#   Xcode scheme file is needed.
+# - `generic/platform=iOS` compiles and links for a real iPhone without
+#   needing a simulator or a signing identity.
+# - `CODE_SIGNING_ALLOWED=NO` skips code signing, which a cloud build
+#   cannot do without certificates.
+#
+# Minutes come from the repository owner's GitHub account. The free tier
+# covers a class project: macOS minutes count tenfold, and a build of this
+# app takes only a few minutes.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build VentureMap
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build for iOS
+        run: xcodebuild -project VentureMap.xcodeproj -target VentureMap -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
