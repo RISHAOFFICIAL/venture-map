@@ -25,10 +25,12 @@ import SwiftUI
 ///   (verified pixel for pixel). The pin image is transparent, which is
 ///   what makes the stacking work: two opaque tiles would hide each other,
 ///   but the transparent pin lets the ring show through everywhere the pin
-///   isn't. Their green was recolored to this screen's green, so no seam
-///   shows and the faint square edge the old tile left behind is gone. The
-///   old single asset stays in the catalog because the sign-in and sign-up
-///   forms still show it.
+///   isn't. The screen's green is the logo's own green
+///   (`Color.ventureGreen`, #426542, measured from the artwork), so the
+///   tiles melt into the background with no seam and no square edge — the
+///   app matches the logo, not the other way around. The old single asset
+///   stays in the catalog because the sign-in and sign-up forms still show
+///   it.
 ///
 /// Reduced motion shows the settled screen at once, with no animation.
 ///
@@ -49,8 +51,6 @@ struct SplashView: View {
     @State private var wordmarkOpacity: Double = 0
     @State private var buttonsShown = false
     @State private var finished = false
-
-    private let ventureGreen = Color(red: 0.18, green: 0.41, blue: 0.24)
 
     /// The pin and ring images are 320x222 and the wordmark 320x98; all
     /// show at 310 wide, so the pin and ring stack into a 310-point square
@@ -77,7 +77,7 @@ struct SplashView: View {
 
     var body: some View {
         ZStack {
-            ventureGreen
+            Color.ventureGreen
                 .ignoresSafeArea()
 
             VStack {
@@ -137,7 +137,7 @@ struct SplashView: View {
                     Button("Sign up", action: onSignUp)
                         .buttonStyle(.borderedProminent)
                         .tint(.white)
-                        .foregroundStyle(ventureGreen)
+                        .foregroundStyle(Color.ventureGreen)
                         .controlSize(.large)
                         .frame(maxWidth: .infinity)
                         .splashButton(shown: buttonsShown, delay: 0)
