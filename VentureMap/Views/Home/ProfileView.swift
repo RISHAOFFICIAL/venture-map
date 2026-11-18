@@ -24,6 +24,9 @@ struct ProfileView: View {
     let onRequireSignIn: () -> Void
     let onRequireSignUp: () -> Void
     let onSelectGuestFeature: (GuestFeature) -> Void
+    /// Replays the guided tour (signed-in accounts). The profile dismisses
+    /// itself first, so the tour plays over the map, not under this sheet.
+    let onReplayTour: () -> Void
     // Details captured at sign in / sign up (see `SignInView`, `SignUpView`).
     @AppStorage("accountEmail") private var accountEmail = ""
     @AppStorage("accountLocation") private var accountLocation = ""
@@ -148,6 +151,15 @@ struct ProfileView: View {
                             }
                             .fontWeight(isEditingBusinesses ? .semibold : .regular)
                             .textCase(nil)
+                        }
+                    }
+
+                    Section {
+                        Button {
+                            dismiss()
+                            onReplayTour()
+                        } label: {
+                            Label("Replay the tour", systemImage: "play.circle.fill")
                         }
                     }
                 }

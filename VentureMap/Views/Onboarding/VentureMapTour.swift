@@ -22,9 +22,14 @@ import SwiftUI
 /// - `VentureMapTourOverlay` reads those frames and cuts a hole in the dim
 ///   with `SpotlightShape` (an even-odd fill: full rect plus hole).
 ///
-/// The tour is guest-only, shows once automatically, and can be replayed
-/// from the guest profile ("Replay the tour"). Finishing or skipping marks
-/// it done, so it never auto-repeats.
+/// The tour is not guest-only: it shows once for anyone entering the map
+/// for the first time, guest or signed-in, because a new account has never
+/// seen the map either. The copy adapts to who is looking: guests hear
+/// about practice entries and signing in, signed-in users hear about
+/// logging real events and their profile. It can be replayed from the
+/// profile ("Replay the tour"). Finishing or skipping marks it done, so it
+/// never auto-repeats — for a guest who saw it and then signs up, or the
+/// other way around.
 
 // MARK: - Anchors
 
@@ -76,8 +81,11 @@ extension View {
 // MARK: - Steps and manager
 
 /// One step of the tour: which element to highlight, and what to say about
-/// it. The copy matches the old tutorial word for word, plus a step for the
-/// reach card, which the old pages never covered.
+/// it. The guest copy matches the old tutorial word for word, plus a step
+/// for the reach card, which the old pages never covered. Three steps say
+/// something different for a signed-in user: the map step (their events
+/// are saved samples, not practice), the + step (real events are saved,
+/// not practice), and the menu step (they are already signed in).
 struct TourStep: Identifiable {
     let id: Int
     let anchor: TourAnchor
@@ -94,37 +102,58 @@ final class VentureMapTourManager: ObservableObject {
     @Published private(set) var isShowing = false
     @Published private(set) var step = 0
 
-    let steps: [TourStep] = [
-        TourStep(
-            id: 0,
-            anchor: .map,
-            tip: "Pan and zoom around a sample neighborhood with practice events already plotted for you."
-        ),
-        TourStep(
-            id: 1,
-            anchor: .callout,
-            tip: "Select any marker to open a full callout with event details, right on the map."
-        ),
-        TourStep(
-            id: 2,
-            anchor: .addButton,
-            tip: "Try the + button to see how logging an event works. Practice entries are just for learning and won't be saved."
-        ),
-        TourStep(
-            id: 3,
-            anchor: .reachCard,
-            tip: "Your reach shows how many people your events reached, across every neighborhood."
-        ),
-        TourStep(
-            id: 4,
-            anchor: .profileButton,
-            tip: "Ready to track your real outreach? Tap the menu button to sign in or create an account."
-        ),
-    ]
+    /// Whether the tour is currently running for a guest. Set by whoever
+    /// starts the tour; the steps read it to pick their copy.
+    private(set) var isGuest = true
 
-    /// One flag, on device, for the guest tour. Guests have no account, so
-    /// there is nothing per-account to key by — one tour, one flag.
-    private let doneKey = "venturemap.tourDone.v1.guest"
+    /// The steps, with copy that adapts to who is looking. Steps 2 and 4
+    /// are the same for everyone; steps 1, 3, and 5 say something
+    /// different for a signed-in user, because practice entries and
+    /// signing in do not apply to them.
+    var steps: [TourStep] {
+        [
+            TourStep(
+                id: 0,
+                anchor: .map,
+                tip: isGuest
+                    ? "Pan and zoom around a sample neighborhood with practice events already plotted for you."
+                    : "Pan and zoom around the map. Sample events are already plotted for you — tap any pin to see how it works."
+            ),
+            TourStep(
+                id: 1,
+                anchor: .callout,
+                tip: "Select any marker to open a full callout with event details, right on the map."
+            ),
+            TourStep(
+                id: 2,
+                anchor: .addButton,
+                tip: isGuest
+                    ? "Try the + button to see how logging an event works. Practice entries are just for learning and won't be saved."
+                    : "Tap + to log an event you held. It appears on your map right away and counts toward your reach."
+            ),
+            TourStep(
+                id: 3,
+                anchor: .reachCard,
+                tip: "Your reach shows how many people your events reached, across every neighborhood."
+            ),
+            TourStep(
+                id: 4,
+                anchor: .profileButton,
+                tip: isGuest
+                    ? "Ready to track your real outreach? Tap the menu button to sign in or create an account."
+                    : "Tap the menu button anytime to see your profile, your businesses, and organizations matched to your focus."
+            ),
+        ]
+    }
+
+    /// One flag, on device, for the tour. It is shared across guest and
+    /// signed-in sessions on purpose: seeing the tour once is enough, and a
+    /// guest who saw it should not see it again after signing up.
+    private let doneKey = "venturemap.tourDone.v1"
+    /// The first version of the tour keyed its flag to guests only. A guest
+    /// who finished under that key has still seen the tour, so it counts
+    /// as done too.
+    private let legacyGuestDoneKey = "venturemap.tourDone.v1.guest"
 
     private init() {}
 
@@ -138,11 +167,13 @@ final class VentureMapTourManager: ObservableObject {
 
     var isDone: Bool {
         UserDefaults.standard.bool(forKey: doneKey)
+            || UserDefaults.standard.bool(forKey: legacyGuestDoneKey)
     }
 
-    /// Shows the tour the first time a guest enters the app. Does nothing
-    /// once the tour has been finished or skipped.
-    func startAutomaticallyIfNeeded() {
+    /// Shows the tour the first time anyone enters the map — guest or
+    /// signed-in. Does nothing once the tour has been finished or skipped.
+    func startAutomaticallyIfNeeded(isGuest: Bool) {
+        self.isGuest = isGuest
         guard !isDone, !isShowing else { return }
         step = 0
         isShowing = true
@@ -150,7 +181,8 @@ final class VentureMapTourManager: ObservableObject {
 
     /// Shows the tour again on purpose (the profile's "Replay the tour"
     /// row). Works whether or not the tour was finished before.
-    func startAgain() {
+    func startAgain(isGuest: Bool) {
+        self.isGuest = isGuest
         step = 0
         isShowing = true
     }

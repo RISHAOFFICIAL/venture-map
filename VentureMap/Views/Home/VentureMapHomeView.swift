@@ -225,7 +225,10 @@ struct VentureMapHomeView: View {
                 allowsSaving: !isGuest,
                 onRequireSignIn: onRequireSignIn,
                 onRequireSignUp: onRequireSignUp,
-                onSelectGuestFeature: openGuestFeature
+                onSelectGuestFeature: openGuestFeature,
+                onReplayTour: {
+                    tour.startAgain(isGuest: isGuest)
+                }
             )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -250,9 +253,10 @@ struct VentureMapHomeView: View {
             .presentationDragIndicator(.visible)
         }
         .onAppear {
-            if isGuest {
-                tour.startAutomaticallyIfNeeded()
-            }
+            // The tour shows the first time anyone enters the map, guest
+            // or signed-in — a new account has never seen the map either.
+            // The manager itself decides whether it has already been seen.
+            tour.startAutomaticallyIfNeeded(isGuest: isGuest)
         }
         .onChange(of: tour.step) { _, _ in
             prepareTourStep()
@@ -316,7 +320,7 @@ struct VentureMapHomeView: View {
         case .saveProgress:
             onRequireSignUp()
         case .replayTour:
-            tour.startAgain()
+            tour.startAgain(isGuest: true)
         }
     }
 
