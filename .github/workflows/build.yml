@@ -7,8 +7,12 @@
 #   needs (it targets iOS 27).
 # - `-target VentureMap` builds the app target directly, so no shared
 #   Xcode scheme file is needed.
-# - `generic/platform=iOS` compiles and links for a real iPhone without
-#   needing a simulator or a signing identity.
+# - `-sdk iphoneos` picks the iPhone SDK. `-destination` does NOT work
+#   here: without a scheme, xcodebuild ignores the destination entirely
+#   and builds for macOS instead, which fails on every iOS-only API.
+#   (Proven by the first run of this workflow, 2026-11-17: 23 errors,
+#   all iOS-only API missing on macOS, because the destination was
+#   ignored.) Building for the device SDK needs no simulator.
 # - `CODE_SIGNING_ALLOWED=NO` skips code signing, which a cloud build
 #   cannot do without certificates.
 #
@@ -36,4 +40,4 @@ jobs:
         run: xcodebuild -version
 
       - name: Build for iOS
-        run: xcodebuild -project VentureMap.xcodeproj -target VentureMap -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
+        run: xcodebuild -project VentureMap.xcodeproj -target VentureMap -sdk iphoneos build CODE_SIGNING_ALLOWED=NO
