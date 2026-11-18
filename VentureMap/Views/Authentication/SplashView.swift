@@ -3,25 +3,32 @@ import SwiftUI
 /// The very first screen a brand-new user sees: a full-bleed background with
 /// the logo and three choices (sign up, sign in, continue as guest).
 ///
-/// The logo arrives animated: the pin drops in from above, a ripple rings
-/// its landing, the globe's lines draw themselves in and dissolve into the
-/// real globe, the wordmark rises beneath, and the buttons fade in.
-/// About 1.6 seconds end to end, following the same sequenced-animation
-/// shape as Where's the Run's splash (a `.task` that steps through the
-/// beats, each guarded so leaving the screen mid-animation stops it cleanly).
+/// The logo arrives animated: the ground ring is already down, the pin
+/// drops in from above and lands on it, a ripple rings the landing, the
+/// globe's lines draw themselves in and dissolve into the real globe, the
+/// wordmark fades in beneath, and the buttons fade in. About 1.5 seconds
+/// end to end, following the same sequenced-animation shape as Where's the
+/// Run's splash (a `.task` that steps through the beats, each guarded so
+/// leaving the screen mid-animation stops it cleanly).
 ///
 /// Two things that matter about how this is built:
 /// - The buttons are live from the first frame. They fade in with the
 ///   wordmark, but a tap on one works even mid-animation, so the entrance
 ///   never makes anyone wait. That is why there is no tap-to-skip gesture:
 ///   there is nothing to wait out.
-/// - The mark is two images, split from the one splash asset at the empty
-///   band between the ground ring and the wordmark, so each half can move on
-///   its own. Stacked with no gap at the same width, they compose exactly
-///   the old image — and their green was recolored to this screen's green,
-///   so the split is invisible and the faint square edge the old tile left
-///   behind is gone. The old single asset stays in the catalog because the
-///   sign-in and sign-up forms still show it.
+/// - The mark is three images, split from the one splash asset so each part
+///   can move on its own: the ground ring (`VentureMapSplashEllipse`), the
+///   pin and globe (`VentureMapSplashPin`), and the wordmark
+///   (`VentureMapSplashWordmark`). The ring and the pin share one frame —
+///   the ring sits in its rest position from the first frame while the pin
+///   drops onto it — and stacked they reproduce the original mark exactly
+///   (verified pixel for pixel). The pin image is transparent, which is
+///   what makes the stacking work: two opaque tiles would hide each other,
+///   but the transparent pin lets the ring show through everywhere the pin
+///   isn't. Their green was recolored to this screen's green, so no seam
+///   shows and the faint square edge the old tile left behind is gone. The
+///   old single asset stays in the catalog because the sign-in and sign-up
+///   forms still show it.
 ///
 /// Reduced motion shows the settled screen at once, with no animation.
 ///
@@ -34,38 +41,38 @@ struct SplashView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var markOffset: CGFloat = -500
+    @State private var pinOffset: CGFloat = -500
     @State private var rippleScale: CGFloat = 0.6
     @State private var rippleOpacity: Double = 0
     @State private var meridianTrim: CGFloat = 0
     @State private var meridianOpacity: Double = 0
-    @State private var wordmarkOffset: CGFloat = 24
     @State private var wordmarkOpacity: Double = 0
     @State private var buttonsShown = false
     @State private var finished = false
 
     private let ventureGreen = Color(red: 0.18, green: 0.41, blue: 0.24)
 
-    /// The mark image is 320x222 and the wordmark 320x98; both show at 310
-    /// wide, so together they are exactly the 310-point square the old
-    /// single image was.
-    private let markWidth: CGFloat = 310
-    private var markHeight: CGFloat { markWidth * 222 / 320 }
+    /// The pin and ring images are 320x222 and the wordmark 320x98; all
+    /// show at 310 wide, so the pin and ring stack into a 310-point square
+    /// with the wordmark beneath, exactly the old single image's footprint.
+    private let artWidth: CGFloat = 310
+    private var artHeight: CGFloat { artWidth * 222 / 320 }
 
-    /// The globe inside the mark, measured from the artwork: its center sits
-    /// at (161, 83) of the 320x222 mark, with a radius of 50.
+    /// The globe inside the pin, measured from the artwork: its center sits
+    /// at (161, 83) of the 320x222 art, with a radius of 50.
     private var globeCenter: CGPoint {
-        CGPoint(x: markWidth * 161 / 320, y: markHeight * 83 / 222)
+        CGPoint(x: artWidth * 161 / 320, y: artHeight * 83 / 222)
     }
-    private var globeRadius: CGFloat { markWidth * 50 / 320 }
+    private var globeRadius: CGFloat { artWidth * 50 / 320 }
 
-    /// The ground ellipse under the pin, measured from the artwork: its
-    /// center sits at (159.5, 190) of the mark, radii 66.5 by 11.
-    private var ellipseCenter: CGPoint {
-        CGPoint(x: markWidth * 159.5 / 320, y: markHeight * 190 / 222)
+    /// The ground ring under the pin, measured from the artwork: its center
+    /// sits at (159.5, 193.5) of the art, 133 wide by 37 tall. The ripple
+    /// rings out from this same ellipse.
+    private var ringCenter: CGPoint {
+        CGPoint(x: artWidth * 159.5 / 320, y: artHeight * 193.5 / 222)
     }
-    private var ellipseSize: CGSize {
-        CGSize(width: markWidth * 133 / 320, height: markHeight * 22 / 222)
+    private var ringSize: CGSize {
+        CGSize(width: artWidth * 133 / 320, height: artHeight * 37 / 222)
     }
 
     var body: some View {
@@ -78,9 +85,30 @@ struct SplashView: View {
 
                 VStack(spacing: 0) {
                     ZStack {
-                        Image("VentureMapSplashMark")
+                        // The ground ring, already down from the first
+                        // frame. It never moves.
+                        Image("VentureMapSplashEllipse")
                             .resizable()
                             .scaledToFit()
+
+                        // The ripple: a second ground ellipse that grows
+                        // out from the landing point and fades. It sits
+                        // under the pin, the way a ripple on the ground
+                        // passes behind the thing that landed.
+                        Ellipse()
+                            .stroke(Color.white, lineWidth: 2)
+                            .frame(width: ringSize.width, height: ringSize.height)
+                            .position(ringCenter)
+                            .scaleEffect(rippleScale)
+                            .opacity(rippleOpacity)
+
+                        // The pin and globe, dropping onto the ring. The
+                        // image is transparent, so the ring shows through
+                        // everywhere the pin isn't.
+                        Image("VentureMapSplashPin")
+                            .resizable()
+                            .scaledToFit()
+                            .offset(y: pinOffset)
 
                         // The globe's lines, drawn over the real globe and
                         // gone again before the animation ends.
@@ -90,25 +118,14 @@ struct SplashView: View {
                             .frame(width: globeRadius * 2, height: globeRadius * 2)
                             .position(globeCenter)
                             .opacity(meridianOpacity)
-
-                        // The ripple: a second ground ellipse that grows
-                        // out from the landing point and fades.
-                        Ellipse()
-                            .stroke(Color.white, lineWidth: 2)
-                            .frame(width: ellipseSize.width, height: ellipseSize.height)
-                            .position(ellipseCenter)
-                            .scaleEffect(rippleScale)
-                            .opacity(rippleOpacity)
                     }
-                    .frame(width: markWidth, height: markHeight)
-                    .offset(y: markOffset)
+                    .frame(width: artWidth, height: artHeight)
                     .accessibilityLabel("VentureMap")
 
                     Image("VentureMapSplashWordmark")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: markWidth)
-                        .offset(y: wordmarkOffset)
+                        .frame(width: artWidth)
                         .opacity(wordmarkOpacity)
                 }
 
@@ -148,20 +165,20 @@ struct SplashView: View {
 
     // MARK: - Animation
 
-    /// Drop (~0.45s) → ripple + globe lines (~0.6s) → wordmark rises and
-    /// buttons fade in (~0.5s). About 1.6 seconds end to end.
+    /// The ring is already down. Pin drop (~0.45s) → ripple + globe lines
+    /// (~0.6s) → wordmark fades in and buttons fade in (~0.4s). About 1.5
+    /// seconds end to end.
     private func play() async {
         if reduceMotion {
-            markOffset = 0
-            wordmarkOffset = 0
+            pinOffset = 0
             wordmarkOpacity = 1
             buttonsShown = true
             finished = true
             return
         }
 
-        // The pin drops in from above.
-        withAnimation(.easeIn(duration: 0.45)) { markOffset = 0 }
+        // The pin drops in from above and lands on the ring.
+        withAnimation(.easeIn(duration: 0.45)) { pinOffset = 0 }
         await nap(0.45)
         guard stillPlaying() else { return }
 
@@ -176,12 +193,9 @@ struct SplashView: View {
         await nap(0.6)
         guard stillPlaying() else { return }
 
-        // The lines dissolve, the wordmark rises, the buttons fade in.
+        // The lines dissolve, the wordmark fades in, the buttons fade in.
         withAnimation(.easeOut(duration: 0.3)) { meridianOpacity = 0 }
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-            wordmarkOffset = 0
-            wordmarkOpacity = 1
-        }
+        withAnimation(.easeOut(duration: 0.4)) { wordmarkOpacity = 1 }
         withAnimation(.easeOut(duration: 0.35)) { buttonsShown = true }
         await nap(0.5)
         finished = true
