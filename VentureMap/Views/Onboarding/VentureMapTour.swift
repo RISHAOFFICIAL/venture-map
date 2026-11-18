@@ -2,24 +2,25 @@ import SwiftUI
 
 /// The guided tour: instead of the old swipeable word pages
 /// (`GuestTutorialView`, deleted), the tour plays *over the real home
-/// screen*. Each step dims the screen, rings the actual element being
+/// screen*. Each step dims the screen but leaves the actual element being
 /// described — the map, a real pin callout, the + button, the reach card,
-/// the menu button — and shows one short tip beside it. Tapping anywhere
-/// moves on.
+/// the menu button — lit at full brightness through a spotlight hole, with
+/// a glowing ring around it, and shows one short tip beside it. Tapping
+/// anywhere moves on.
 ///
-/// This follows the Where's the Run tour beat for beat: a dim overlay, a
-/// glowing pulsing ring that glides to the next target, a tip card with a
-/// step count and a "tap the glowing spot" hint, Skip always visible, and
-/// steps that set the real screen up first (the pin step opens a real
-/// callout, so the ring points at a callout that is actually there).
+/// That highlight is the point: the element being talked about keeps its
+/// real colors, the way the other apps' tours do, instead of being dimmed
+/// out along with everything else. The tip card follows the Where's the
+/// Run shape (dark panel, step count, "tap the glowing spot" hint), and
+/// the steps set the real screen up first (the pin step opens a real
+/// callout, so the spotlight falls on a callout that is actually there).
 ///
-/// How the ring finds its target:
-/// - Every ringed view reports its frame up through
+/// How the spotlight finds its target:
+/// - Every highlighted view reports its frame up through
 ///   `TourFramePreferenceKey` (see `tourAnchor(_:)`), measured in the
 ///   "tour" coordinate space that `VentureMapHomeView` sets on its root.
-/// - `VentureMapTourOverlay` reads those frames and centers the ring on
-///   the current step's element. The map step has no single view, so its
-///   ring sits at the center of the open map.
+/// - `VentureMapTourOverlay` reads those frames and cuts a hole in the dim
+///   with `SpotlightShape` (an even-odd fill: full rect plus hole).
 ///
 /// The tour is guest-only, shows once automatically, and can be replayed
 /// from the guest profile ("Replay the tour"). Finishing or skipping marks
@@ -27,7 +28,7 @@ import SwiftUI
 
 // MARK: - Anchors
 
-/// The home-screen elements the tour can ring.
+/// The home-screen elements the tour can highlight.
 enum TourAnchor: Hashable {
     /// The open map between the header and the reach card.
     case map
@@ -41,7 +42,7 @@ enum TourAnchor: Hashable {
     case profileButton
 }
 
-/// Collects the on-screen frames of every ringed view, keyed by
+/// Collects the on-screen frames of every highlighted view, keyed by
 /// anchor. A `PreferenceKey` is SwiftUI's way for a deep child view to pass
 /// a value *up* to an ancestor: each anchored view writes its frame in,
 /// `reduce` merges them, and the home view reads the merged dictionary with
@@ -55,7 +56,7 @@ struct TourFramePreferenceKey: PreferenceKey {
 }
 
 extension View {
-    /// Reports this view's frame to the tour, so the ring can find it.
+    /// Reports this view's frame to the tour, so the spotlight can find it.
     /// The frame is measured in the "tour" coordinate space, which the home
     /// view sets on its root — that keeps every anchor in one shared
     /// coordinate system, no matter how deeply nested the view is.
@@ -74,8 +75,8 @@ extension View {
 
 // MARK: - Steps and manager
 
-/// One step of the tour: which element to ring, and what to say about it.
-/// The copy matches the old tutorial word for word, plus a step for the
+/// One step of the tour: which element to highlight, and what to say about
+/// it. The copy matches the old tutorial word for word, plus a step for the
 /// reach card, which the old pages never covered.
 struct TourStep: Identifiable {
     let id: Int
@@ -172,18 +173,45 @@ final class VentureMapTourManager: ObservableObject {
     }
 }
 
+// MARK: - Spotlight
+
+/// The dim with a hole in it. The path is the full rect plus a rounded
+/// rect for the hole; filled with the even-odd rule
+/// (`FillStyle(eoFill: true)`) the hole stays clear while everything around
+/// it dims — that is the spotlight.
+///
+/// `animatableData` lets the hole glide from one element to the next when
+/// the step changes, instead of jumping: SwiftUI interpolates the rect
+/// between steps.
+struct SpotlightShape: Shape {
+    var hole: CGRect
+    var cornerRadius: CGFloat = 18
+
+    var animatableData: CGRect.AnimatableData {
+        get { hole.animatableData }
+        set { hole = CGRect(animatableData: newValue) }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        path.addRoundedRect(
+            in: hole,
+            cornerSize: CGSize(width: cornerRadius, height: cornerRadius)
+        )
+        return path
+    }
+}
+
 // MARK: - Overlay
 
 /// The overlay that plays over the real home screen while the tour runs:
-/// the dim, the glowing ring on the current element, and the tip card.
-/// Tapping anywhere — the dim, the ring, the card — advances instantly.
-/// Skip is always visible.
+/// the dim with its spotlight hole, a glowing ring around the highlighted
+/// element, and the tip card. Tapping anywhere — the dim, the highlighted
+/// element, the card — advances. Skip is always visible.
 struct VentureMapTourOverlay: View {
     @ObservedObject private var tour = VentureMapTourManager.shared
     /// Frames of the anchored views, in the "tour" coordinate space.
     let anchors: [TourAnchor: CGRect]
-
-    @State private var pulsing = false
 
     /// The app's green, matching the splash screen.
     private let ventureGreen = Color(red: 0.18, green: 0.41, blue: 0.24)
@@ -191,35 +219,40 @@ struct VentureMapTourOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let center = ringCenter(for: tour.currentStep.anchor, in: size)
+            let hole = holeRect(for: tour.currentStep.anchor, in: size)
             ZStack {
-                // Dim overlay; tapping it advances.
-                Color.black.opacity(0.6)
-                    .ignoresSafeArea()
+                // The dim, with the spotlight hole cut out of it. The
+                // highlighted element shows through at full brightness;
+                // everything else dims. Tapping the dim advances.
+                SpotlightShape(hole: hole)
+                    .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
                     .contentShape(Rectangle())
                     .onTapGesture { tour.advance() }
 
-                // Glowing ring at the current target. It glides quickly
-                // to the next target; the tip text and counter change
-                // synchronously on tap.
-                ring
-                    .contentShape(Circle())
+                // The glow ring around the highlighted element. Its tap
+                // area is the whole hole, not just the thin ring, so the
+                // highlighted spot is an easy tap target.
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white, lineWidth: 2.5)
+                    .frame(width: hole.width, height: hole.height)
+                    .position(x: hole.midX, y: hole.midY)
+                    .shadow(color: .white.opacity(0.6), radius: 10)
+                    .contentShape(Rectangle())
                     .onTapGesture { tour.advance() }
-                    .position(center)
-                    .animation(.easeOut(duration: 0.12), value: tour.step)
 
-                // Tip card: below the ring when it fits, above it when not.
+                // Tip card: below the spotlight when it fits, above it
+                // when not.
                 tipCard(width: size.width - 28)
                     .onTapGesture { tour.advance() }
                     .position(
                         x: size.width / 2,
-                        y: cardCenterY(ringY: center.y, in: size, insets: geometry.safeAreaInsets)
+                        y: cardCenterY(holeMidY: hole.midY, in: size, insets: geometry.safeAreaInsets)
                     )
 
                 // Skip is always visible. It sits top-center, not
                 // top-right the way Where's the Run has it, because this
-                // app's + button lives top-right and the ring would land
-                // on top of it there.
+                // app's + button lives top-right and the spotlight would
+                // land on top of it there.
                 VStack {
                     HStack {
                         Spacer()
@@ -239,55 +272,32 @@ struct VentureMapTourOverlay: View {
             }
         }
         .ignoresSafeArea()
-        .onAppear { pulsing = true }
+        .animation(.easeInOut(duration: 0.3), value: tour.step)
     }
 
-    // MARK: - Ring
-
-    private var ring: some View {
-        ZStack {
-            Circle()
-                .fill(Color.white.opacity(0.15))
-                .frame(width: 96, height: 96)
-            Circle()
-                .stroke(Color.white, lineWidth: 2.5)
-                .frame(width: 76, height: 76)
-        }
-        .scaleEffect(pulsing ? 1.12 : 1.0)
-        .opacity(pulsing ? 0.85 : 1.0)
-        .animation(
-            .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
-            value: pulsing
-        )
-        .shadow(color: ventureGreen.opacity(0.6), radius: 12)
-    }
-
-    /// The ring's center for a step: the anchored view's center. The map
-    /// step has no single view to point at, so its ring sits at the center
-    /// of the open map between the header and the reach card. If an anchor
-    /// hasn't reported yet — the callout is still animating in, or there
-    /// are no events to call out — the step falls back to the map.
-    private func ringCenter(for anchor: TourAnchor, in size: CGSize) -> CGPoint {
+    /// The spotlight hole for a step: the anchored view's frame, padded a
+    /// little so the ring sits clear of the element. The map step has no
+    /// single view to point at, so its hole is the open map between the
+    /// header and the reach card, worked out from their frames. If an
+    /// anchor hasn't reported yet — the callout is still animating in, or
+    /// there are no events to call out — the step falls back to the map.
+    private func holeRect(for anchor: TourAnchor, in size: CGSize) -> CGRect {
         switch anchor {
         case .map:
-            return mapCenter(in: size)
+            let headerBottom = max(
+                anchors[.profileButton]?.maxY ?? 120,
+                anchors[.addButton]?.maxY ?? 120
+            )
+            let reachTop = anchors[.reachCard]?.minY ?? (size.height - 200)
+            let top = min(headerBottom + 8, size.height * 0.5)
+            let bottom = max(reachTop - 8, top + 120)
+            return CGRect(x: 12, y: top, width: size.width - 24, height: bottom - top)
         case .callout, .addButton, .reachCard, .profileButton:
             if let frame = anchors[anchor] {
-                return CGPoint(x: frame.midX, y: frame.midY)
+                return frame.insetBy(dx: -10, dy: -10)
             }
-            return mapCenter(in: size)
+            return holeRect(for: .map, in: size)
         }
-    }
-
-    private func mapCenter(in size: CGSize) -> CGPoint {
-        let headerBottom = max(
-            anchors[.profileButton]?.maxY ?? 120,
-            anchors[.addButton]?.maxY ?? 120
-        )
-        let reachTop = anchors[.reachCard]?.minY ?? (size.height - 200)
-        let top = min(headerBottom + 8, size.height * 0.5)
-        let bottom = max(reachTop - 8, top + 120)
-        return CGPoint(x: size.width / 2, y: (top + bottom) / 2)
     }
 
     // MARK: - Tip card
@@ -316,12 +326,12 @@ struct VentureMapTourOverlay: View {
         )
     }
 
-    private func cardCenterY(ringY: CGFloat, in size: CGSize, insets: EdgeInsets) -> CGFloat {
-        let below = ringY + 128
+    private func cardCenterY(holeMidY: CGFloat, in size: CGSize, insets: EdgeInsets) -> CGFloat {
+        let below = holeMidY + 128
         if below + 60 <= size.height - insets.bottom {
             return below
         }
-        return max(ringY - 128, insets.top + 80)
+        return max(holeMidY - 128, insets.top + 80)
     }
 }
 
