@@ -245,9 +245,6 @@ struct VentureMapTourOverlay: View {
     /// Frames of the anchored views, in the "tour" coordinate space.
     let anchors: [TourAnchor: CGRect]
 
-    /// The app's green, matching the splash screen.
-    private let ventureGreen = Color(red: 0.18, green: 0.41, blue: 0.24)
-
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
