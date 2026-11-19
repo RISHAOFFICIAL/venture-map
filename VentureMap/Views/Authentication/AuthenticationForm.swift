@@ -28,7 +28,7 @@ struct AuthenticationForm<Fields: View>: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.18, green: 0.41, blue: 0.24)
+            Color.ventureGreen
                 .ignoresSafeArea()
 
             ScrollView {
@@ -72,7 +72,7 @@ struct AuthenticationForm<Fields: View>: View {
                     Button(primaryActionTitle, action: onComplete)
                         .buttonStyle(.borderedProminent)
                         .tint(.white)
-                        .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.24))
+                        .foregroundStyle(Color.ventureGreen)
                         .controlSize(.large)
                         .frame(maxWidth: .infinity)
                 }

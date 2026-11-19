@@ -16,6 +16,6 @@ struct PracticeModeBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(Color(red: 0.18, green: 0.41, blue: 0.24), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.ventureGreen, in: RoundedRectangle(cornerRadius: 10))
     }
 }
