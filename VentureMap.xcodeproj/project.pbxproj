@@ -10,22 +10,9 @@
 		000000000000000000000120 /* VentureMap.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VentureMap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		C95697B5308A648100133555 /* Exceptions for "VentureMap" folder in "VentureMap" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Views/Home/UserLocationProvider.swift,
-			);
-			target = 000000000000000100000000 /* VentureMap */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* VentureMap */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				C95697B5308A648100133555 /* Exceptions for "VentureMap" folder in "VentureMap" target */,
-			);
 			path = VentureMap;
 			sourceTree = "<group>";
 		};
