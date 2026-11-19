@@ -110,8 +110,9 @@ final class VentureMapTourManager: ObservableObject {
     @Published private(set) var step = 0
 
     /// Whether the tour is currently running for a guest. Set by whoever
-    /// starts the tour; the steps read it to pick their copy.
-    private(set) var isGuest = true
+    /// starts the tour; the steps read it to pick their copy. Published so
+    /// the tip text refreshes if it ever changes mid-tour.
+    @Published private(set) var isGuest = true
 
     /// The steps, with copy that adapts to who is looking. Steps 2 and 4
     /// are the same for everyone; steps 1, 3, and 5 say something
@@ -123,8 +124,8 @@ final class VentureMapTourManager: ObservableObject {
                 id: 0,
                 anchor: .map,
                 tip: isGuest
-                    ? "Pan and zoom around a sample neighborhood with practice events already plotted for you."
-                    : "Pan and zoom around the map. Sample events are already plotted for you — tap any pin to see how it works."
+                    ? "A sample neighborhood with practice events already plotted. Tap anywhere to keep going."
+                    : "Sample events are already plotted on your map. Tap anywhere to keep going."
             ),
             TourStep(
                 id: 1,
@@ -256,10 +257,19 @@ struct SpotlightShape: Shape {
 /// element, the card — advances. Skip is always visible.
 struct VentureMapTourOverlay: View {
     @ObservedObject private var tour = VentureMapTourManager.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Frames of the anchored views, in the window's global coordinate space.
     let anchors: [TourAnchor: CGRect]
 
     var body: some View {
+        // NOTE: this overlay deliberately does NOT ignore the safe area.
+        // The Skip button's top padding reads `geometry.safeAreaInsets.top`,
+        // and `.ignoresSafeArea()` makes that read 0 — which put Skip
+        // behind the Dynamic Island, invisible and untappable (found live
+        // on the simulator, Nov 19). The GeometryReader still spans the
+        // full screen because the home view underneath it does, so the dim
+        // covers the status bar area; only the inset *reading* needs the
+        // safe area intact. Do not re-add `.ignoresSafeArea()` here.
         GeometryReader { geometry in
             let size = geometry.size
             let hole = holeRect(for: tour.currentStep.anchor, in: size)
@@ -300,7 +310,7 @@ struct VentureMapTourOverlay: View {
                     HStack {
                         Spacer()
                         Button("Skip tour") { tour.skip() }
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 16)
                             .frame(minHeight: 44)
@@ -314,8 +324,9 @@ struct VentureMapTourOverlay: View {
                 .padding(.top, geometry.safeAreaInsets.top + 12)
             }
         }
-        .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.3), value: tour.step)
+        // The spotlight glides between steps, unless the user asked for
+        // reduced motion — then it jumps straight to the next element.
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: tour.step)
     }
 
     /// The spotlight hole for a step: the anchored view's frame, padded a
@@ -348,15 +359,15 @@ struct VentureMapTourOverlay: View {
     private func tipCard(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(tour.currentStep.tip)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.headline)
                 .foregroundStyle(.white)
             HStack {
                 Text("\(tour.step + 1) of \(tour.steps.count)")
-                    .font(.system(size: 13))
+                    .font(.caption)
                     .foregroundStyle(.white.opacity(0.6))
                 Spacer()
                 Text("Tap the glowing spot")
-                    .font(.system(size: 13))
+                    .font(.caption)
                     .foregroundStyle(.green)
             }
         }
@@ -367,6 +378,10 @@ struct VentureMapTourOverlay: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.white.opacity(0.15), lineWidth: 1)
         )
+        // VoiceOver users cannot use the tap-anywhere gesture, so the card
+        // exposes a real accessibility action that advances the tour.
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Next step") { tour.advance() }
     }
 
     private func cardCenterY(holeMidY: CGFloat, in size: CGSize, insets: EdgeInsets) -> CGFloat {
