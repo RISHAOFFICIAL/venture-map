@@ -181,8 +181,11 @@ final class VentureMapTourManager: ObservableObject {
     /// Shows the tour the first time anyone enters the map — guest or
     /// signed-in. Does nothing once the tour has been finished or skipped.
     func startAutomaticallyIfNeeded(isGuest: Bool) {
-        self.isGuest = isGuest
         guard !isDone, !isShowing else { return }
+        // Set after the guard, so a no-op call never flips the copy
+        // mid-tour (isGuest is @Published, so a flip would refresh the
+        // tip text under the user's feet).
+        self.isGuest = isGuest
         step = 0
         isShowing = true
     }
