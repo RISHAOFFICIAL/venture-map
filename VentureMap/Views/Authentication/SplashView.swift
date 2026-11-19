@@ -12,10 +12,13 @@ import SwiftUI
 /// leaving the screen mid-animation stops it cleanly).
 ///
 /// Two things that matter about how this is built:
-/// - The buttons are live from the first frame. They fade in with the
-///   wordmark, but a tap on one works even mid-animation, so the entrance
-///   never makes anyone wait. That is why there is no tap-to-skip gesture:
-///   there is nothing to wait out.
+/// - The buttons become tappable as they fade in. Before that they are
+///   disabled, so a tap in the first second cannot trigger a sign-up the
+///   user cannot see yet (opacity 0 still hit-tests in SwiftUI).
+/// - The animation plays once per launch. If the user backs out of
+///   sign-in and lands here again, the settled screen shows at once
+///   instead of replaying: the played flag lives on the type, not the
+///   instance, because @State resets when the view is recreated.
 /// - The mark is three images, split from the one splash asset so each part
 ///   can move on its own: the ground ring (`VentureMapSplashEllipse`), the
 ///   pin and globe (`VentureMapSplashPin`), and the wordmark
@@ -51,6 +54,11 @@ struct SplashView: View {
     @State private var wordmarkOpacity: Double = 0
     @State private var buttonsShown = false
     @State private var finished = false
+
+    /// Whether the entrance has played once this launch. A static, not
+    /// @State: the view is recreated when the user returns from sign-in,
+    /// which would reset @State and replay the animation.
+    private static var playedThisLaunch = false
 
     /// The pin and ring images are 320x222 and the wordmark 320x98; all
     /// show at 310 wide, so the pin and ring stack into a 310-point square
@@ -167,13 +175,17 @@ struct SplashView: View {
 
     /// The ring is already down. Pin drop (~0.45s) → ripple + globe lines
     /// (~0.6s) → wordmark fades in and buttons fade in (~0.4s). About 1.5
-    /// seconds end to end.
+    /// seconds end to end. Plays once per launch; a returning user gets
+    /// the settled screen at once.
     private func play() async {
+        if Self.playedThisLaunch {
+            settle()
+            return
+        }
+        Self.playedThisLaunch = true
+
         if reduceMotion {
-            pinOffset = 0
-            wordmarkOpacity = 1
-            buttonsShown = true
-            finished = true
+            settle()
             return
         }
 
@@ -198,6 +210,16 @@ struct SplashView: View {
         withAnimation(.easeOut(duration: 0.4)) { wordmarkOpacity = 1 }
         withAnimation(.easeOut(duration: 0.35)) { buttonsShown = true }
         await nap(0.5)
+        finished = true
+    }
+
+    /// The settled screen: pin down, wordmark and buttons in, no motion.
+    /// Used for Reduce Motion and for a returning user who already saw the
+    /// entrance once this launch.
+    private func settle() {
+        pinOffset = 0
+        wordmarkOpacity = 1
+        buttonsShown = true
         finished = true
     }
 
@@ -230,10 +252,12 @@ private struct GlobeMeridians: Shape {
 private extension View {
     /// A splash button's entrance: fades and rises in once `shown` flips,
     /// staggered by `delay` so the three buttons arrive one after another.
-    /// The button stays tappable the whole time.
+    /// The button is disabled until it starts fading in, so an invisible
+    /// button can never be tapped.
     func splashButton(shown: Bool, delay: Double) -> some View {
         opacity(shown ? 1 : 0)
             .offset(y: shown ? 0 : 12)
             .animation(.easeOut(duration: 0.35).delay(delay), value: shown)
+            .disabled(!shown)
     }
 }
