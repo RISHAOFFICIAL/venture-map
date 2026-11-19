@@ -6,4 +6,5 @@ enum GuestFeature {
     case addEvent
     case checkReach
     case saveProgress
+    case replayTour
 }

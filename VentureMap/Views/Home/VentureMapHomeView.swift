@@ -73,7 +73,15 @@ struct VentureMapHomeView: View {
     @State private var initialLocation = ""
     @State private var detailEvent: CommunityEvent?
     @State private var fullListLocation: SelectedLocation?
-    @State private var showsTutorial = false
+    // The guided tour (see `VentureMapTour.swift`): spotlights the real
+    // home-screen elements instead of the old swipeable word pages.
+    @ObservedObject private var tour = VentureMapTourManager.shared
+    // Frames of the tour's anchor views, reported up through
+    // `TourFramePreferenceKey` in the window's global coordinate space.
+    @State private var tourAnchors: [TourAnchor: CGRect] = [:]
+    // True while the callout on screen is one the tour opened itself, so
+    // finishing the tour can close it again.
+    @State private var tourOpenedCallout = false
     // Powers the "center on me" location button above the reach card.
     @State private var userLocationProvider
  = UserLocationProvider()
@@ -127,6 +135,7 @@ struct VentureMapHomeView: View {
                     ReachCard(events: filteredEvents)
                 }
                 .buttonStyle(.plain)
+                .tourAnchor(.reachCard)
                 .accessibilityLabel("Open your reach overview")
             }
             .padding(.horizontal, 10)
@@ -150,6 +159,17 @@ struct VentureMapHomeView: View {
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
+        }
+        .onPreferenceChange(TourFramePreferenceKey.self) { frames in
+            tourAnchors = frames
+        }
+        // The tour overlay sits above the map, header, and reach card, so
+        // its dim covers the real screen while the spotlight hole and tip
+        // card stay on top.
+        .overlay {
+            if tour.isShowing {
+                VentureMapTourOverlay(anchors: tourAnchors)
+            }
         }
         .sheet(isPresented: $showsAddEvent) {
             AddEventView(
@@ -205,7 +225,10 @@ struct VentureMapHomeView: View {
                 allowsSaving: !isGuest,
                 onRequireSignIn: onRequireSignIn,
                 onRequireSignUp: onRequireSignUp,
-                onSelectGuestFeature: openGuestFeature
+                onSelectGuestFeature: openGuestFeature,
+                onReplayTour: {
+                    tour.startAgain(isGuest: isGuest)
+                }
             )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -229,12 +252,18 @@ struct VentureMapHomeView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .fullScreenCover(isPresented: $showsTutorial) {
-            GuestTutorialView(onFinish: { showsTutorial = false })
-        }
         .onAppear {
-            if isGuest {
-                showsTutorial = true
+            // The tour shows the first time anyone enters the map, guest
+            // or signed-in — a new account has never seen the map either.
+            // The manager itself decides whether it has already been seen.
+            tour.startAutomaticallyIfNeeded(isGuest: isGuest)
+        }
+        .onChange(of: tour.step) { _, _ in
+            prepareTourStep()
+        }
+        .onChange(of: tour.isShowing) { _, isShowing in
+            if !isShowing {
+                clearTourCallout()
             }
         }
         .task {
@@ -286,7 +315,45 @@ struct VentureMapHomeView: View {
             showsReachOverview = true
         case .saveProgress:
             onRequireSignUp()
+        case .replayTour:
+            tour.startAgain(isGuest: true)
         }
+    }
+
+    /// Sets the real screen up for the tour's current step. Only the pin
+    /// step needs setup: it opens the first event's callout so the tour can
+    /// spotlight a real callout, and moves the camera so the callout is on
+    /// screen. If the filters hide every event, there is nothing to open
+    /// and the step falls back to spotlighting the map. Moving past the pin
+    /// step closes the callout again, so it doesn't sit dimmed in the
+    /// middle of the screen for the rest of the tour.
+    private func prepareTourStep() {
+        guard tour.isShowing else { return }
+        guard tour.currentStep.anchor == .callout else {
+            clearTourCallout()
+            return
+        }
+        guard !tourOpenedCallout else { return }
+        guard let first = filteredEvents.first else { return }
+        tourOpenedCallout = true
+        withAnimation {
+            selectedLocation = SelectedLocation(location: first.location)
+            cameraPosition = .region(
+                MKCoordinateRegion(
+                    center: first.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                )
+            )
+        }
+    }
+
+    /// Closes the callout the tour opened, if it opened one. Runs when the
+    /// tour moves past the pin step, finishes, or is skipped, so the guest
+    /// lands back on a clean map.
+    private func clearTourCallout() {
+        guard tourOpenedCallout else { return }
+        tourOpenedCallout = false
+        selectedLocation = nil
     }
 
     private var filteredEvents: [CommunityEvent] {
