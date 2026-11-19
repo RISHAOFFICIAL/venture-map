@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// The guided tour: instead of the old swipeable word pages
 /// (`GuestTutorialView`, deleted), the tour plays *over the real home
