@@ -222,7 +222,14 @@ struct SpotlightShape: Shape {
 
     var animatableData: CGRect.AnimatableData {
         get { hole.animatableData }
-        set { hole = CGRect(animatableData: newValue) }
+        set {
+            hole = CGRect(
+                x: newValue.first.first,
+                y: newValue.first.second,
+                width: newValue.second.first,
+                height: newValue.second.second
+            )
+        }
     }
 
     func path(in rect: CGRect) -> Path {
