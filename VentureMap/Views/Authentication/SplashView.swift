@@ -5,10 +5,10 @@ import SwiftUI
 ///
 /// The logo arrives animated: the ground ring is already down, the pin
 /// drops in from above and lands on it, a ripple rings the landing, the
-/// globe's lines draw themselves in and dissolve into the real globe, the
-/// wordmark fades in beneath, and the buttons fade in. About 1.5 seconds
-/// end to end, following the same sequenced-animation shape as Where's the
-/// Run's splash (a `.task` that steps through the beats, each guarded so
+/// globe's grid lines draw themselves in one after another, the wordmark
+/// fades in beneath, and the buttons fade in. About 1.5 seconds end to
+/// end, following the same sequenced-animation shape as Where's the Run's
+/// splash (a `.task` that steps through the beats, each guarded so
 /// leaving the screen mid-animation stops it cleanly).
 ///
 /// Two things that matter about how this is built:
@@ -21,11 +21,14 @@ import SwiftUI
 ///   pin and globe (`VentureMapSplashPin`), and the wordmark
 ///   (`VentureMapSplashWordmark`). The ring and the pin share one frame —
 ///   the ring sits in its rest position from the first frame while the pin
-///   drops onto it — and stacked they reproduce the original mark exactly
-///   (verified pixel for pixel). The pin image is transparent, which is
-///   what makes the stacking work: two opaque tiles would hide each other,
-///   but the transparent pin lets the ring show through everywhere the pin
-///   isn't. The screen's green is the logo's own green
+///   drops onto it. The pin image is transparent, which is what makes the
+///   stacking work: two opaque tiles would hide each other, but the
+///   transparent pin lets the ring show through everywhere the pin isn't.
+///   The pin's globe has no grid lines in it — the lines are drawn by the
+///   overlay below, traced from the artwork itself, so they can draw in
+///   for real instead of sitting baked into the image. With the lines
+///   drawn, the stack reproduces the original mark (verified against the
+///   artwork). The screen's green is the logo's own green
 ///   (`Color.ventureGreen`, #426542, measured from the artwork), so the
 ///   tiles melt into the background with no seam and no square edge — the
 ///   app matches the logo, not the other way around. The old single asset
@@ -46,8 +49,13 @@ struct SplashView: View {
     @State private var pinOffset: CGFloat = -500
     @State private var rippleScale: CGFloat = 0.6
     @State private var rippleOpacity: Double = 0
+    // One trim per grid line, so they draw in one after another instead
+    // of all at once. The lines stay drawn — the pin image has no grid
+    // lines in it, so the overlay *is* the lines at rest.
+    @State private var diagonalTrim: CGFloat = 0
     @State private var meridianTrim: CGFloat = 0
-    @State private var meridianOpacity: Double = 0
+    @State private var tropicTrim: CGFloat = 0
+    @State private var tropicEndTrim: CGFloat = 0
     @State private var wordmarkOpacity: Double = 0
     @State private var buttonsShown = false
     @State private var finished = false
@@ -57,13 +65,6 @@ struct SplashView: View {
     /// with the wordmark beneath, exactly the old single image's footprint.
     private let artWidth: CGFloat = 310
     private var artHeight: CGFloat { artWidth * 222 / 320 }
-
-    /// The globe inside the pin, measured from the artwork: its center sits
-    /// at (161, 83) of the 320x222 art, with a radius of 50.
-    private var globeCenter: CGPoint {
-        CGPoint(x: artWidth * 161 / 320, y: artHeight * 83 / 222)
-    }
-    private var globeRadius: CGFloat { artWidth * 50 / 320 }
 
     /// The ground ring under the pin, measured from the artwork: its center
     /// sits at (159.5, 193.5) of the art, 133 wide by 37 tall. The ripple
@@ -110,14 +111,14 @@ struct SplashView: View {
                             .scaledToFit()
                             .offset(y: pinOffset)
 
-                        // The globe's lines, drawn over the real globe and
-                        // gone again before the animation ends.
-                        GlobeMeridians()
-                            .trim(from: 0, to: meridianTrim)
-                            .stroke(Color.white, lineWidth: 1.5)
-                            .frame(width: globeRadius * 2, height: globeRadius * 2)
-                            .position(globeCenter)
-                            .opacity(meridianOpacity)
+                        // The globe's grid lines, traced from the artwork
+                        // and drawn in one after another. They stay drawn:
+                        // the pin image has no grid lines, so these are
+                        // the lines at rest, not a temporary effect.
+                        meridianLine(points: Self.diagonalPoints, trim: diagonalTrim)
+                        meridianLine(points: Self.meridianPoints, trim: meridianTrim)
+                        meridianLine(points: Self.tropicPoints, trim: tropicTrim)
+                        meridianLine(points: Self.tropicEndPoints, trim: tropicEndTrim)
                     }
                     .frame(width: artWidth, height: artHeight)
                     .accessibilityLabel("VentureMap")
@@ -163,14 +164,28 @@ struct SplashView: View {
         .task { await play() }
     }
 
+    /// One grid line, drawn along its traced path and trimmed by `trim`
+    /// (0 is not drawn yet, 1 is fully drawn). The stroke matches the
+    /// artwork's own lines: about a point wide, round at the ends.
+    private func meridianLine(points: [CGPoint], trim: CGFloat) -> some View {
+        TracedMeridian(points: points)
+            .trim(from: 0, to: trim)
+            .stroke(Color.white, style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round))
+            .frame(width: artWidth, height: artHeight)
+    }
+
     // MARK: - Animation
 
-    /// The ring is already down. Pin drop (~0.45s) → ripple + globe lines
-    /// (~0.6s) → wordmark fades in and buttons fade in (~0.4s). About 1.5
-    /// seconds end to end.
+    /// The ring is already down. Pin drop (~0.45s) → ripple + the four
+    /// grid lines drawing in, staggered (~0.6s) → wordmark fades in and
+    /// buttons fade in (~0.4s). About 1.5 seconds end to end.
     private func play() async {
         if reduceMotion {
             pinOffset = 0
+            diagonalTrim = 1
+            meridianTrim = 1
+            tropicTrim = 1
+            tropicEndTrim = 1
             wordmarkOpacity = 1
             buttonsShown = true
             finished = true
@@ -182,19 +197,23 @@ struct SplashView: View {
         await nap(0.45)
         guard stillPlaying() else { return }
 
-        // On landing, the ripple rings out and the globe's lines draw in.
+        // On landing, the ripple rings out and the globe's grid lines
+        // draw in one after another: the diagonal first, then the
+        // meridian, then the tropic and its end dash. The lines stay
+        // drawn — they are the globe's grid now, not a passing effect.
         rippleOpacity = 0.8
-        meridianOpacity = 0.9
         withAnimation(.easeOut(duration: 0.5)) {
             rippleScale = 1.7
             rippleOpacity = 0
         }
-        withAnimation(.easeInOut(duration: 0.6)) { meridianTrim = 1 }
+        withAnimation(.easeInOut(duration: 0.45)) { diagonalTrim = 1 }
+        withAnimation(.easeInOut(duration: 0.45).delay(0.15)) { meridianTrim = 1 }
+        withAnimation(.easeInOut(duration: 0.3).delay(0.3)) { tropicTrim = 1 }
+        withAnimation(.easeInOut(duration: 0.15).delay(0.45)) { tropicEndTrim = 1 }
         await nap(0.6)
         guard stillPlaying() else { return }
 
-        // The lines dissolve, the wordmark fades in, the buttons fade in.
-        withAnimation(.easeOut(duration: 0.3)) { meridianOpacity = 0 }
+        // The wordmark fades in, the buttons fade in.
         withAnimation(.easeOut(duration: 0.4)) { wordmarkOpacity = 1 }
         withAnimation(.easeOut(duration: 0.35)) { buttonsShown = true }
         await nap(0.5)
@@ -210,21 +229,59 @@ struct SplashView: View {
     }
 }
 
-/// The globe's lines: two meridians and one equator, drawn as ellipses
-/// inside the globe's circle. Trimmed from 0 to 1, they draw themselves in.
-private struct GlobeMeridians: Shape {
+/// One of the globe's grid lines, traced from the artwork itself: the
+/// points are measured positions of the line in the 320x222 art frame,
+/// and the shape scales them into whatever frame it is drawn in. Trimmed
+/// from 0 to 1, the line draws itself in along its real path — not an
+/// ellipse guessed at the shape, but the line as the artist drew it.
+/// (The first version drew ellipses; the real lines are a diagonal, a
+/// meridian arc, and a tropic, none of which is an ellipse.)
+private struct TracedMeridian: Shape {
+    /// Points in the 320x222 art frame, in draw order.
+    let points: [CGPoint]
+
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let cx = rect.midX
-        let cy = rect.midY
-        let r = min(rect.width, rect.height) / 2
-        // Meridians: tall, narrow ellipses.
-        path.addEllipse(in: CGRect(x: cx - r * 0.55, y: cy - r, width: r * 1.1, height: r * 2))
-        path.addEllipse(in: CGRect(x: cx - r * 0.22, y: cy - r, width: r * 0.44, height: r * 2))
-        // Equator: short, wide ellipse.
-        path.addEllipse(in: CGRect(x: cx - r, y: cy - r * 0.3, width: r * 2, height: r * 0.6))
+        guard let first = points.first else { return path }
+        let scaleX = rect.width / 320
+        let scaleY = rect.height / 222
+        path.move(to: CGPoint(x: first.x * scaleX, y: first.y * scaleY))
+        for point in points.dropFirst() {
+            path.addLine(to: CGPoint(x: point.x * scaleX, y: point.y * scaleY))
+        }
         return path
     }
+}
+
+private extension SplashView {
+    /// The diagonal line across the Atlantic, lower-left to upper-right.
+    static let diagonalPoints: [CGPoint] = [
+        CGPoint(x: 125, y: 102.1), CGPoint(x: 137, y: 91.5),
+        CGPoint(x: 142, y: 87.6), CGPoint(x: 144, y: 85),
+        CGPoint(x: 154, y: 80.3), CGPoint(x: 159, y: 78.9),
+        CGPoint(x: 161, y: 76.9), CGPoint(x: 174, y: 69.1),
+        CGPoint(x: 179, y: 66.3), CGPoint(x: 186, y: 58),
+    ]
+
+    /// The meridian arc down the globe's left side and along the bottom.
+    static let meridianPoints: [CGPoint] = [
+        CGPoint(x: 117.3, y: 76.3), CGPoint(x: 116, y: 86),
+        CGPoint(x: 117.9, y: 95), CGPoint(x: 121.2, y: 99.4),
+        CGPoint(x: 127.7, y: 105), CGPoint(x: 137, y: 112),
+        CGPoint(x: 148.7, y: 118.6), CGPoint(x: 150.9, y: 124),
+        CGPoint(x: 153.2, y: 126.2),
+    ]
+
+    /// The tropic line below South America.
+    static let tropicPoints: [CGPoint] = [
+        CGPoint(x: 140, y: 113), CGPoint(x: 159.9, y: 120),
+        CGPoint(x: 177, y: 119.5),
+    ]
+
+    /// The short dash at the tropic's right end.
+    static let tropicEndPoints: [CGPoint] = [
+        CGPoint(x: 187, y: 114.5), CGPoint(x: 191.5, y: 114.5),
+    ]
 }
 
 private extension View {
