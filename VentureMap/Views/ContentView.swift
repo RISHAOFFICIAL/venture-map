@@ -33,56 +33,70 @@ struct ContentView: View {
     @State private var isGuest = false
 
     var body: some View {
-        if let route {
-            // `if let route` "unwraps" the optional: inside this block,
-            // `route` is guaranteed non-nil, so we can switch on it safely.
-            switch route {
-            case .signIn:
-                SignInView(
-                    // These are **closures** (small inline functions) passed
-                    // as arguments. This is how a child view (SignInView)
-                    // communicates back up to its parent (ContentView)
-                    // without needing to know anything about ContentView
-                    // itself — it just calls `onCancel()` or `onComplete()`
-                    // when something happens.
-                    onCancel: { self.route = nil },
-                    onComplete: {
-                        hasEnteredVentureMap = true
-                        hasPassedEntry = true
-                        self.route = nil
+        Group {
+            if let route {
+                // `if let route` "unwraps" the optional: inside this block,
+                // `route` is guaranteed non-nil, so we can switch on it safely.
+                switch route {
+                case .signIn:
+                    SignInView(
+                        // These are **closures** (small inline functions) passed
+                        // as arguments. This is how a child view (SignInView)
+                        // communicates back up to its parent (ContentView)
+                        // without needing to know anything about ContentView
+                        // itself — it just calls `onCancel()` or `onComplete()`
+                        // when something happens.
+                        onCancel: { self.route = nil },
+                        onComplete: {
+                            hasEnteredVentureMap = true
+                            hasPassedEntry = true
+                            self.route = nil
+                        }
+                    )
+                case .signUp:
+                    SignUpView(
+                        onCancel: { self.route = nil },
+                        onComplete: {
+                            hasEnteredVentureMap = true
+                            hasPassedEntry = true
+                            self.route = nil
+                        }
+                    )
+                }
+            } else if hasPassedEntry && (hasEnteredVentureMap || isGuest) {
+                VentureMapHomeView(
+                    isGuest: isGuest,
+                    onRequireSignIn: {
+                        isGuest = false
+                        route = .signIn
+                    },
+                    onRequireSignUp: {
+                        isGuest = false
+                        route = .signUp
                     }
                 )
-            case .signUp:
-                SignUpView(
-                    onCancel: { self.route = nil },
-                    onComplete: {
-                        hasEnteredVentureMap = true
+            } else {
+                SplashView(
+                    onSignIn: { route = .signIn },
+                    onSignUp: { route = .signUp },
+                    onGuest: {
+                        isGuest = true
                         hasPassedEntry = true
-                        self.route = nil
                     }
                 )
             }
-        } else if hasPassedEntry && (hasEnteredVentureMap || isGuest) {
-            VentureMapHomeView(
-                isGuest: isGuest,
-                onRequireSignIn: {
-                    isGuest = false
-                    route = .signIn
-                },
-                onRequireSignUp: {
-                    isGuest = false
-                    route = .signUp
-                }
-            )
-        } else {
-            SplashView(
-                onSignIn: { route = .signIn },
-                onSignUp: { route = .signUp },
-                onGuest: {
-                    isGuest = true
-                    hasPassedEntry = true
-                }
-            )
+        }
+        .onAppear {
+            // Returning users skip the splash. `hasPassedEntry` is plain
+            // @State, so it resets to false on every cold launch, but
+            // `hasEnteredVentureMap` is @AppStorage and survives. Restore
+            // the flag from the persisted value so a signed-in user lands
+            // straight on the map instead of the splash every time.
+            // Guests never set `hasEnteredVentureMap`, so they still see
+            // the splash, which is correct: there is nothing to return to.
+            if hasEnteredVentureMap {
+                hasPassedEntry = true
+            }
         }
     }
 }
