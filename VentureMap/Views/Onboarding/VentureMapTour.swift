@@ -19,7 +19,12 @@ import Combine
 /// How the spotlight finds its target:
 /// - Every highlighted view reports its frame up through
 ///   `TourFramePreferenceKey` (see `tourAnchor(_:)`), measured in the
-///   "tour" coordinate space that `VentureMapHomeView` sets on its root.
+///   window's global coordinate space — the same space the overlay draws
+///   in, so the hole lands exactly on the element it is describing.
+///   (An earlier version measured in a named space on the home view, but
+///   that space's origin sat below the status bar while the overlay draws
+///   from the top of the screen, so every hole landed a status-bar height
+///   too high. Global coordinates have no such mismatch to get wrong.)
 /// - `VentureMapTourOverlay` reads those frames and cuts a hole in the dim
 ///   with `SpotlightShape` (an even-odd fill: full rect plus hole).
 ///
@@ -63,16 +68,17 @@ struct TourFramePreferenceKey: PreferenceKey {
 
 extension View {
     /// Reports this view's frame to the tour, so the spotlight can find it.
-    /// The frame is measured in the "tour" coordinate space, which the home
-    /// view sets on its root — that keeps every anchor in one shared
-    /// coordinate system, no matter how deeply nested the view is.
+    /// The frame is measured in the window's global coordinate space,
+    /// which is the same space the overlay draws in — that keeps every
+    /// anchor on the element it belongs to, no matter how deeply nested
+    /// the view is.
     func tourAnchor(_ anchor: TourAnchor) -> some View {
         background(
             GeometryReader { proxy in
                 Color.clear
                     .preference(
                         key: TourFramePreferenceKey.self,
-                        value: [anchor: proxy.frame(in: .named("tour"))]
+                        value: [anchor: proxy.frame(in: .global)]
                     )
             }
         )
@@ -250,7 +256,7 @@ struct SpotlightShape: Shape {
 /// element, the card — advances. Skip is always visible.
 struct VentureMapTourOverlay: View {
     @ObservedObject private var tour = VentureMapTourManager.shared
-    /// Frames of the anchored views, in the "tour" coordinate space.
+    /// Frames of the anchored views, in the window's global coordinate space.
     let anchors: [TourAnchor: CGRect]
 
     var body: some View {

@@ -77,7 +77,7 @@ struct VentureMapHomeView: View {
     // home-screen elements instead of the old swipeable word pages.
     @ObservedObject private var tour = VentureMapTourManager.shared
     // Frames of the tour's anchor views, reported up through
-    // `TourFramePreferenceKey` in the "tour" coordinate space.
+    // `TourFramePreferenceKey` in the window's global coordinate space.
     @State private var tourAnchors: [TourAnchor: CGRect] = [:]
     // True while the callout on screen is one the tour opened itself, so
     // finishing the tour can close it again.
@@ -269,10 +269,6 @@ struct VentureMapHomeView: View {
         .task {
             seedSampleEventsIfNeeded()
         }
-        // The shared coordinate space the tour's anchors are measured in.
-        // It sits last so every part of this screen — the map, the header,
-        // the bottom card — is inside it and can resolve the name.
-        .coordinateSpace(name: "tour")
     }
 
     /// First launch for a signed-in account starts with the sample events,
@@ -328,9 +324,16 @@ struct VentureMapHomeView: View {
     /// step needs setup: it opens the first event's callout so the tour can
     /// spotlight a real callout, and moves the camera so the callout is on
     /// screen. If the filters hide every event, there is nothing to open
-    /// and the step falls back to spotlighting the map.
+    /// and the step falls back to spotlighting the map. Moving past the pin
+    /// step closes the callout again, so it doesn't sit dimmed in the
+    /// middle of the screen for the rest of the tour.
     private func prepareTourStep() {
-        guard tour.isShowing, tour.currentStep.anchor == .callout, !tourOpenedCallout else { return }
+        guard tour.isShowing else { return }
+        guard tour.currentStep.anchor == .callout else {
+            clearTourCallout()
+            return
+        }
+        guard !tourOpenedCallout else { return }
         guard let first = filteredEvents.first else { return }
         tourOpenedCallout = true
         withAnimation {
@@ -345,7 +348,8 @@ struct VentureMapHomeView: View {
     }
 
     /// Closes the callout the tour opened, if it opened one. Runs when the
-    /// tour finishes or is skipped, so the guest lands back on a clean map.
+    /// tour moves past the pin step, finishes, or is skipped, so the guest
+    /// lands back on a clean map.
     private func clearTourCallout() {
         guard tourOpenedCallout else { return }
         tourOpenedCallout = false
