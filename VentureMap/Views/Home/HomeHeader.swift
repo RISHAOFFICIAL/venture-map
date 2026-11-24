@@ -14,7 +14,10 @@ struct HomeHeader: View {
     @Binding var timeRange: TimeRange
     @Binding var selectedEventType: EventType?
     let businesses: [Business]
-    @Binding var selectedBusinessID: UUID
+    // Nil when the account has no business yet (sample data off, user
+    // hasn't added one). The + button and the center control both handle
+    // that by routing to the profile to add a business first.
+    @Binding var selectedBusinessID: UUID?
 
     var body: some View {
         VStack(spacing: 10) {
@@ -41,7 +44,13 @@ struct HomeHeader: View {
                     Divider()
                         .frame(height: 23)
                     Button {
-                        showsAddEvent = true
+                        if businesses.isEmpty {
+                            // No business to attach an event to yet:
+                            // send the user to add one first.
+                            showsProfile = true
+                        } else {
+                            showsAddEvent = true
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .frame(width: 36, height: 38)
@@ -52,24 +61,43 @@ struct HomeHeader: View {
                 .accessibilityLabel("Search or add event")
             }
             .overlay {
-                Menu {
-                    ForEach(businesses) { business in
-                        Button(business.name) {
-                            selectedBusinessID = business.id
+                if businesses.isEmpty {
+                    // No business yet: the picker has nothing to pick,
+                    // so the center control becomes the way to add one.
+                    Button {
+                        showsProfile = true
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text("Add a business")
+                                .lineLimit(1)
+                            Image(systemName: "plus")
+                                .font(.caption.weight(.bold))
                         }
+                        .padding(.horizontal, 12)
+                        .frame(height: 38)
+                        .background(.thinMaterial, in: Capsule())
                     }
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(businesses.first(where: { $0.id == selectedBusinessID })?.name ?? "Business")
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
+                    .accessibilityLabel("Add your first business")
+                } else {
+                    Menu {
+                        ForEach(businesses) { business in
+                            Button(business.name) {
+                                selectedBusinessID = business.id
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(businesses.first(where: { $0.id == selectedBusinessID })?.name ?? "Business")
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.bold))
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 38)
+                        .background(.thinMaterial, in: Capsule())
                     }
-                    .padding(.horizontal, 12)
-                    .frame(height: 38)
-                    .background(.thinMaterial, in: Capsule())
+                    .accessibilityLabel("Choose active business")
                 }
-                .accessibilityLabel("Choose active business")
             }
 
             EventFilters(

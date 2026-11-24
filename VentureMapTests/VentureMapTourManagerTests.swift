@@ -166,9 +166,16 @@ final class VentureMapTourManagerTests: XCTestCase {
         tour.startAgain(isGuest: false)
         let signedInTips = tour.steps.map(\.tip)
 
-        // Steps 1, 3, and 5 adapt; steps 2 and 4 are the same for everyone.
+        // Steps 1, 3, and 5 adapt; step 4 is the same for everyone. Step 2
+        // (the callout) is the same when sample data is on, but a
+        // signed-in user with an empty map gets different copy — there is
+        // no marker to select yet.
         XCTAssertNotEqual(guestTips[0], signedInTips[0])
-        XCTAssertEqual(guestTips[1], signedInTips[1])
+        if DemoData.isEnabled {
+            XCTAssertEqual(guestTips[1], signedInTips[1])
+        } else {
+            XCTAssertNotEqual(guestTips[1], signedInTips[1])
+        }
         XCTAssertNotEqual(guestTips[2], signedInTips[2])
         XCTAssertEqual(guestTips[3], signedInTips[3])
         XCTAssertNotEqual(guestTips[4], signedInTips[4])
@@ -189,5 +196,20 @@ final class VentureMapTourManagerTests: XCTestCase {
         tour.startAgain(isGuest: false)
         XCTAssertFalse(tour.steps[0].tip.contains("Pan and zoom"))
         XCTAssertTrue(tour.steps[0].tip.contains("Tap anywhere"))
+    }
+
+    func testSignedInEmptyMapCopyDoesNotPromiseSampleEvents() {
+        // With sample data off, the signed-in map step must not claim
+        // sample events are plotted, and the callout step must not tell
+        // the user to select a marker that isn't there. (With the switch
+        // on, the signed-in copy is the sample copy, so this test has
+        // nothing to check.)
+        guard !DemoData.isEnabled else { return }
+
+        tour.startAgain(isGuest: false)
+
+        XCTAssertFalse(tour.steps[0].tip.contains("Sample events"))
+        XCTAssertTrue(tour.steps[0].tip.contains("Tap anywhere"))
+        XCTAssertFalse(tour.steps[1].tip.contains("Select any marker"))
     }
 }
