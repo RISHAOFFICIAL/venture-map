@@ -56,23 +56,31 @@ struct ReachOverviewView: View {
                     )
                 }
 
-                Section("Top spots") {
-                    ForEach(topLocations) { location in
-                        NavigationLink {
-                            LocationEventsView(
-                                location: location.location,
-                                events: events.filter { $0.location == location.location },
-                                onUpdateEvent: onUpdateEvent
-                            )
-                        } label: {
-                            TopLocationRow(location: location)
+                // No locations to rank yet: the section stays hidden
+                // rather than showing an empty header.
+                if !topLocations.isEmpty {
+                    Section("Top spots") {
+                        ForEach(topLocations) { location in
+                            NavigationLink {
+                                LocationEventsView(
+                                    location: location.location,
+                                    events: events.filter { $0.location == location.location },
+                                    onUpdateEvent: onUpdateEvent
+                                )
+                            } label: {
+                                TopLocationRow(location: location)
+                            }
                         }
                     }
                 }
 
                 Section("What the data says") {
-                    Label("\(topLocations.first?.location ?? "Your community") is your highest-reach location.", systemImage: "mappin.and.ellipse")
-                    Label("\(events.count) events have been imported to your map.", systemImage: "arrow.down.doc")
+                    if events.isEmpty {
+                        Label("Log your first event and your reach will show up here.", systemImage: "mappin.and.ellipse")
+                    } else {
+                        Label("\(topLocations.first?.location ?? "Your community") is your highest-reach location.", systemImage: "mappin.and.ellipse")
+                        Label("\(events.count) events have been imported to your map.", systemImage: "arrow.down.doc")
+                    }
                 }
             }
             .navigationTitle("Reach overview")

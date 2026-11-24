@@ -12,7 +12,14 @@ import SwiftUI
 /// Conforming to `Identifiable` (just by having an `id` property) lets
 /// SwiftUI use this type directly in `ForEach` and `.sheet(item:)` without
 /// any extra boilerplate — SwiftUI uses `id` to know which row is which.
-struct Business: Identifiable {
+///
+/// `Codable` lets the app save the businesses list to UserDefaults as
+/// JSON, so businesses a user adds survive app relaunches (see
+/// `BusinessStore` in `VentureMapHomeView`). `Equatable` lets the home
+/// view watch the list for changes with `.onChange(of:)`, so it knows
+/// when to save. Both are synthesized: every property is already
+/// `Codable` and `Equatable`, so the compiler writes the methods.
+struct Business: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     var location: String

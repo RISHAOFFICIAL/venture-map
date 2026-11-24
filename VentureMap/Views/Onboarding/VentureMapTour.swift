@@ -92,7 +92,10 @@ extension View {
 /// for the reach card, which the old pages never covered. Three steps say
 /// something different for a signed-in user: the map step (their events
 /// are saved samples, not practice), the + step (real events are saved,
-/// not practice), and the menu step (they are already signed in).
+/// not practice), and the menu step (they are already signed in). When
+/// the demo switch is off, the map and callout steps say something
+/// different again for a signed-in user, because the map starts empty —
+/// there are no sample events plotted and no marker to select yet.
 struct TourStep: Identifiable {
     let id: Int
     let anchor: TourAnchor
@@ -117,7 +120,9 @@ final class VentureMapTourManager: ObservableObject {
     /// The steps, with copy that adapts to who is looking. Steps 2 and 4
     /// are the same for everyone; steps 1, 3, and 5 say something
     /// different for a signed-in user, because practice entries and
-    /// signing in do not apply to them.
+    /// signing in do not apply to them. One exception: when the demo
+    /// switch is off, step 2 also differs for a signed-in user, because
+    /// the map starts empty and there is no marker to select yet.
     var steps: [TourStep] {
         [
             TourStep(
@@ -125,12 +130,16 @@ final class VentureMapTourManager: ObservableObject {
                 anchor: .map,
                 tip: isGuest
                     ? "A sample neighborhood with practice events already plotted. Tap anywhere to keep going."
-                    : "Sample events are already plotted on your map. Tap anywhere to keep going."
+                    : DemoData.isEnabled
+                        ? "Sample events are already plotted on your map. Tap anywhere to keep going."
+                        : "This is your map. Events you log appear here as pins. Tap anywhere to keep going."
             ),
             TourStep(
                 id: 1,
                 anchor: .callout,
-                tip: "Select any marker to open a full callout with event details, right on the map."
+                tip: isGuest || DemoData.isEnabled
+                    ? "Select any marker to open a full callout with event details, right on the map."
+                    : "When you log events, they show up here as pins. Tap one to see its details, right on the map."
             ),
             TourStep(
                 id: 2,

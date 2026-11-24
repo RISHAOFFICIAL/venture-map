@@ -19,7 +19,9 @@ struct ProfileView: View {
     @Binding var accountName: String
     @Binding var organizationFocus: String
     @Binding var businesses: [Business]
-    @Binding var selectedBusinessID: UUID
+    // Nil when the account has no business yet (sample data off, user
+    // hasn't added one).
+    @Binding var selectedBusinessID: UUID?
     let allowsSaving: Bool
     let onRequireSignIn: () -> Void
     let onRequireSignUp: () -> Void
@@ -131,7 +133,22 @@ struct ProfileView: View {
                             }
                         }
 
-                        if isEditingBusinesses {
+                        if businesses.isEmpty {
+                            // No business yet: offer the first one right
+                            // here, without hiding it behind Edit. Editing
+                            // turns on so the name and location fields are
+                            // ready to fill in immediately.
+                            Button {
+                                let business = Business(name: "New business", location: "Detroit, MI")
+                                businesses.append(business)
+                                selectedBusinessID = business.id
+                                isEditingBusinesses = true
+                            } label: {
+                                Label("Add your first business", systemImage: "plus.circle.fill")
+                            }
+                        }
+
+                        if isEditingBusinesses && !businesses.isEmpty {
                             Button {
                                 let business = Business(name: "New business", location: "Detroit, MI")
                                 businesses.append(business)

@@ -61,7 +61,11 @@ struct VentureMapHomeView: View {
     @AppStorage("accountOrganization") private var accountName = ""
     @State private var organizationFocus = "Technology-focused outreach"
     @State private var businesses: [Business]
-    @State private var selectedBusinessID: UUID
+    // The active business, or nil when the account has none yet (sample
+    // data off, user hasn't added a business). The header picker, the
+    // profile list, and the add-event flow all handle nil — see
+    // `HomeHeader`, `ProfileView`, and the add-event sheet below.
+    @State private var selectedBusinessID: UUID?
     @State private var cameraPosition = MapCameraPosition.region(CommunityEvent.detroitRegion)
     @State private var selectedLocation: SelectedLocation?
     @State private var timeRange: TimeRange = .ninetyDays
@@ -92,11 +96,40 @@ struct VentureMapHomeView: View {
         self.onRequireSignUp = onRequireSignUp
         // Guests get a small, clearly-labeled practice dataset instead of the same
         // data a signed-in account would see, so practice mode never looks "real."
-        // A signed-in account reads its events from the SwiftData store
-        // instead (seeded with `sampleEvents` on first launch, see below).
-        let businesses = isGuest ? Business.practiceBusinesses : Business.sampleBusinesses
-        _businesses = State(initialValue: businesses)
-        _selectedBusinessID = State(initialValue: businesses[0].id)
+        // Guests always start fresh: practice mode saves nothing.
+        if isGuest {
+            _businesses = State(initialValue: Business.practiceBusinesses)
+            _selectedBusinessID = State(initialValue: Business.practiceBusinesses[0].id)
+        } else if let saved = BusinessStore.load() {
+            // A returning account restores its own businesses — including
+            // ones added in the app, which used to vanish on restart
+            // because nothing saved them. With sample data off, any saved
+            // sample businesses are dropped: they belong to the demo,
+            // not to this account.
+            var businesses = saved.businesses
+            if !DemoData.isEnabled {
+                let sampleIDs = Set(Business.sampleBusinesses.map(\.id))
+                businesses.removeAll { sampleIDs.contains($0.id) }
+            }
+            let selectedID = businesses.contains(where: { $0.id == saved.selectedID })
+                ? saved.selectedID
+                : businesses.first?.id
+            _businesses = State(initialValue: businesses)
+            _selectedBusinessID = State(initialValue: selectedID)
+        } else if DemoData.isEnabled {
+            // First launch with the demo switch on: the class sample
+            // businesses, and the sample events are seeded into the
+            // SwiftData store below.
+            _businesses = State(initialValue: Business.sampleBusinesses)
+            _selectedBusinessID = State(initialValue: Business.sampleBusinesses[0].id)
+        } else {
+            // First launch with the demo switch off (shipping): a new
+            // account starts with no businesses at all. The header, the
+            // profile, and the tour all guide the user to add their
+            // first one.
+            _businesses = State(initialValue: [])
+            _selectedBusinessID = State(initialValue: nil)
+        }
         _guestEvents = State(initialValue: CommunityEvent.practiceEvents)
     }
 
@@ -172,24 +205,40 @@ struct VentureMapHomeView: View {
             }
         }
         .sheet(isPresented: $showsAddEvent) {
-            AddEventView(
-                initialLocation: initialLocation,
-                businessID: selectedBusinessID,
-                allowsSaving: !isGuest,
-                onRequireSignIn: onRequireSignIn
-            ) { event in
-                if isGuest {
-                    guestEvents.append(event)
+            Group {
+                if let businessID = selectedBusinessID {
+                    AddEventView(
+                        initialLocation: initialLocation,
+                        businessID: businessID,
+                        allowsSaving: !isGuest,
+                        onRequireSignIn: onRequireSignIn
+                    ) { event in
+                        if isGuest {
+                            guestEvents.append(event)
+                        } else {
+                            modelContext.insert(event)
+                            try? modelContext.save()
+                        }
+                        cameraPosition = .region(
+                            MKCoordinateRegion(
+                                center: event.coordinate,
+                                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+                            )
+                        )
+                    }
                 } else {
-                    modelContext.insert(event)
-                    try? modelContext.save()
+                    // No business to attach the event to (sample data off,
+                    // user hasn't added one yet). The + button and the
+                    // search "add at place" row both route to the profile
+                    // first, so this is normally unreachable — but the
+                    // sheet can be opened from more than one place, so
+                    // the prompt exists rather than the form opening with
+                    // nowhere to save to.
+                    AddBusinessFirstView {
+                        showsAddEvent = false
+                        showsProfile = true
+                    }
                 }
-                cameraPosition = .region(
-                    MKCoordinateRegion(
-                        center: event.coordinate,
-                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-                    )
-                )
             }
             .presentationDetents([.fraction(0.78)])
             .presentationDragIndicator(.visible)
@@ -210,7 +259,14 @@ struct VentureMapHomeView: View {
                 onAddAtPlace: { place in
                     initialLocation = place
                     showsSearch = false
-                    showsAddEvent = true
+                    if selectedBusinessID == nil {
+                        // No business yet: send the user to add one
+                        // first instead of opening a form with nowhere
+                        // to save to.
+                        showsProfile = true
+                    } else {
+                        showsAddEvent = true
+                    }
                 }
             )
             .presentationDetents([.large])
@@ -266,23 +322,43 @@ struct VentureMapHomeView: View {
                 clearTourCallout()
             }
         }
+        // Keep the signed-in account's businesses saved, so a business
+        // added in the app is still there after a relaunch. Guests never
+        // save: practice mode always starts fresh.
+        .onChange(of: businesses) { _, _ in
+            saveBusinessesIfSignedIn()
+        }
+        .onChange(of: selectedBusinessID) { _, _ in
+            saveBusinessesIfSignedIn()
+        }
         .task {
             seedSampleEventsIfNeeded()
         }
     }
 
     /// First launch for a signed-in account starts with the sample events,
-    /// so the map is never empty. This only ever inserts once: after
-    /// seeding, the store is no longer empty, so later launches skip it.
-    /// Guests never reach this — their practice events stay in memory only.
+    /// so the map is never empty — but only while the demo switch is on
+    /// (see `DemoData`). With the switch off, a new account starts with
+    /// an empty store and adds its own events. This only ever inserts
+    /// once: after seeding, the store is no longer empty, so later
+    /// launches skip it. Guests never reach this — their practice events
+    /// stay in memory only.
     private func seedSampleEventsIfNeeded() {
-        guard !isGuest else { return }
+        guard !isGuest, DemoData.isEnabled else { return }
         let descriptor = FetchDescriptor<CommunityEvent>()
         guard let existing = try? modelContext.fetch(descriptor), existing.isEmpty else { return }
         for event in CommunityEvent.sampleEvents {
             modelContext.insert(event)
         }
         try? modelContext.save()
+    }
+
+    /// Saves the signed-in account's businesses (and which one is
+    /// active) so they survive app relaunches. Guests never save:
+    /// practice mode always starts fresh.
+    private func saveBusinessesIfSignedIn() {
+        guard !isGuest else { return }
+        BusinessStore.save(businesses: businesses, selectedID: selectedBusinessID)
     }
 
     /// Centers the map on the user's current location with an animation.
@@ -378,5 +454,82 @@ struct VentureMapHomeView: View {
         guard let stored = storedEvents.first(where: { $0.id == updatedEvent.id }) else { return }
         stored.update(from: updatedEvent)
         try? modelContext.save()
+    }
+}
+
+/// Saves and loads the signed-in account's businesses list (and which
+/// business is active) as JSON in UserDefaults.
+///
+/// Why this exists: events live in the SwiftData store and survive
+/// relaunches, but the businesses list used to live only in `@State` —
+/// so a business added in the app vanished on restart, and its events
+/// became invisible (nothing in the list matched their business id
+/// anymore). Saving the list next to the store keeps the two in step.
+///
+/// The keys are namespaced (`venturemap.*`) so they never collide with
+/// the auth keys (`accountOrganization`, `staysSignedIn`, ...).
+private enum BusinessStore {
+    private static let businessesKey = "venturemap.savedBusinesses"
+    private static let selectedIDKey = "venturemap.selectedBusinessID"
+
+    /// Returns the saved businesses and the saved active business, or
+    /// nil when nothing was ever saved (a first launch).
+    static func load() -> (businesses: [Business], selectedID: UUID?)? {
+        guard let data = UserDefaults.standard.data(forKey: businessesKey),
+              let businesses = try? JSONDecoder().decode([Business].self, from: data)
+        else { return nil }
+        let selectedID = UserDefaults.standard.string(forKey: selectedIDKey)
+            .flatMap(UUID.init(uuidString:))
+        return (businesses, selectedID)
+    }
+
+    static func save(businesses: [Business], selectedID: UUID?) {
+        if let data = try? JSONEncoder().encode(businesses) {
+            UserDefaults.standard.set(data, forKey: businessesKey)
+        }
+        UserDefaults.standard.set(selectedID?.uuidString, forKey: selectedIDKey)
+    }
+}
+
+/// Shown when the add-event sheet opens with no business to attach the
+/// event to (sample data off, user hasn't added a business yet). The +
+/// button and the search "add at place" row both route to the profile
+/// first, so this is normally unreachable — but the sheet can be opened
+/// from more than one place, so the prompt exists rather than the form
+/// opening with nowhere to save to.
+private struct AddBusinessFirstView: View {
+    @Environment(\.dismiss) private var dismiss
+    let onAddBusiness: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Image(systemName: "building.2")
+                    .font(.largeTitle)
+                    .foregroundStyle(.secondary)
+                Text("Add your first business")
+                    .font(.headline)
+                Text("Events belong to a business. Add yours first, then you can start logging events.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Add a business") {
+                    onAddBusiness()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .navigationTitle("Add Event")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Cancel")
+                }
+            }
+        }
     }
 }
